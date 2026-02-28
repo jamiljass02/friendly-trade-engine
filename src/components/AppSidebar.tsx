@@ -10,128 +10,176 @@ import {
   Sun,
   Moon,
   TrendingUp,
-  TrendingDown,
+  LineChart,
+  Briefcase,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { useBroker } from "@/hooks/useBroker";
-import { useIndexPrices } from "@/hooks/useIndexPrices";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: GitBranch, label: "Strategies", path: "/strategies" },
-  { icon: ClipboardList, label: "Positions", path: "/positions" },
-  { icon: BarChart3, label: "Options Chain", path: "/options" },
+  { icon: GitBranch, label: "Strategy Builder", path: "/strategies" },
+  { icon: BarChart3, label: "Option Chain", path: "/options" },
   { icon: TrendingUp, label: "Futures", path: "/futures" },
+  { icon: ClipboardList, label: "Positions", path: "/positions" },
+  { icon: Briefcase, label: "Holdings", path: "/holdings" },
   { icon: Zap, label: "Risk Manager", path: "/risk" },
   { icon: Activity, label: "Orders", path: "/orders" },
+  { icon: LineChart, label: "Analytics", path: "/analytics" },
 ];
 
-const AppSidebar = () => {
+interface AppSidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const { isConnected, session } = useBroker();
-  const { prices } = useIndexPrices();
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50">
-      {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-5 border-b border-sidebar-border">
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-          <Zap className="w-4 h-4 text-primary-foreground" />
-        </div>
-        <div>
-          <h1 className="text-sm font-bold text-foreground tracking-wide">TradeX</h1>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Execution Platform</p>
-        </div>
-      </div>
-
-      {/* Broker Status + Live Prices */}
-      <div className="px-5 py-3 border-b border-sidebar-border">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-profit animate-pulse" : "bg-muted-foreground"}`} />
-          <span className="text-xs text-muted-foreground">
-            {isConnected ? "Shoonya Connected" : "Broker Disconnected"}
-          </span>
-        </div>
-        {isConnected && session?.userCode && (
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-[10px] font-mono text-primary">{session.userCode}</span>
+    <aside
+      className={cn(
+        "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-300",
+        collapsed ? "w-16" : "w-60"
+      )}
+    >
+      {/* Logo + Collapse */}
+      <div className="flex items-center justify-between px-3 py-4 border-b border-sidebar-border">
+        <div className={cn("flex items-center gap-2", collapsed && "justify-center w-full")}>
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+            <Zap className="w-4 h-4 text-primary-foreground" />
           </div>
-        )}
-
-        {/* Live Index Prices */}
-        <div className="mt-3 space-y-1.5">
-          {prices.map((idx) => (
-            <div key={idx.name} className="flex items-center justify-between">
-              <span className="text-[10px] font-medium text-muted-foreground">{idx.name}</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-mono font-semibold text-foreground">
-                  {idx.price > 0 ? idx.price.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}
-                </span>
-                {idx.price > 0 && (
-                  <span className={cn(
-                    "text-[9px] font-mono flex items-center gap-0.5",
-                    idx.change >= 0 ? "text-profit" : "text-loss"
-                  )}>
-                    {idx.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                    {idx.change >= 0 ? "+" : ""}{idx.changePercent.toFixed(1)}%
-                  </span>
-                )}
-              </div>
+          {!collapsed && (
+            <div>
+              <h1 className="text-sm font-bold text-foreground tracking-wide">TradeX</h1>
+              <p className="text-[9px] text-muted-foreground uppercase tracking-widest">Pro</p>
             </div>
-          ))}
+          )}
         </div>
+        {!collapsed && (
+          <button
+            onClick={onToggle}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        )}
       </div>
+
+      {/* Broker Status */}
+      {!collapsed && (
+        <div className="px-4 py-2.5 border-b border-sidebar-border">
+          <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                "w-2 h-2 rounded-full",
+                isConnected ? "bg-profit animate-pulse" : "bg-muted-foreground"
+              )}
+            />
+            <span className="text-[10px] text-muted-foreground truncate">
+              {isConnected ? "Shoonya Connected" : "Broker Disconnected"}
+            </span>
+          </div>
+          {isConnected && session?.userCode && (
+            <span className="text-[10px] font-mono text-primary mt-0.5 block">{session.userCode}</span>
+          )}
+        </div>
+      )}
+
+      {collapsed && (
+        <div className="flex justify-center py-2.5 border-b border-sidebar-border">
+          <div
+            className={cn(
+              "w-2 h-2 rounded-full",
+              isConnected ? "bg-profit animate-pulse" : "bg-muted-foreground"
+            )}
+          />
+        </div>
+      )}
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 group ${
+              title={collapsed ? item.label : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-lg text-sm transition-all duration-200 group",
+                collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2",
                 isActive
                   ? "bg-primary/10 text-primary glow-primary"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              }`}
+              )}
             >
-              <item.icon className={`w-4 h-4 ${isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`} />
-              <span className="font-medium">{item.label}</span>
+              <item.icon
+                className={cn(
+                  "w-4 h-4 shrink-0",
+                  isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                )}
+              />
+              {!collapsed && <span className="font-medium truncate">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-2 mb-3 px-3">
-          <button
-            onClick={toggleTheme}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors w-full"
-          >
-            {theme === "dark" ? <Sun className="w-4 h-4 text-warning" /> : <Moon className="w-4 h-4 text-primary" />}
-            <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-          </button>
-        </div>
+      <div className="px-2 py-3 border-t border-sidebar-border space-y-1">
+        <button
+          onClick={toggleTheme}
+          title={collapsed ? (theme === "dark" ? "Light Mode" : "Dark Mode") : undefined}
+          className={cn(
+            "flex items-center gap-2 rounded-lg text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors w-full",
+            collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
+          )}
+        >
+          {theme === "dark" ? (
+            <Sun className="w-4 h-4 text-warning shrink-0" />
+          ) : (
+            <Moon className="w-4 h-4 text-primary shrink-0" />
+          )}
+          {!collapsed && <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
+        </button>
+
         <Link
           to="/settings"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+          title={collapsed ? "Settings" : undefined}
+          className={cn(
+            "flex items-center gap-2 rounded-lg text-sm transition-colors",
+            collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2",
             location.pathname === "/settings"
               ? "bg-primary/10 text-primary"
               : "text-sidebar-foreground hover:bg-sidebar-accent"
-          }`}
+          )}
         >
-          <Settings className="w-4 h-4 text-muted-foreground" />
-          <span>Settings</span>
+          <Settings className="w-4 h-4 text-muted-foreground shrink-0" />
+          {!collapsed && <span className="text-xs">Settings</span>}
         </Link>
-        <div className="mt-3 px-3">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            {isConnected ? "Live Trading" : "Paper Trading"}
+
+        {collapsed && (
+          <button
+            onClick={onToggle}
+            className="flex items-center justify-center w-full px-2 py-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        )}
+
+        {!collapsed && (
+          <div className="px-3 pt-1">
+            <div className="text-[9px] text-muted-foreground uppercase tracking-wider">
+              {isConnected ? "Live Trading" : "Paper Trading"}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </aside>
   );

@@ -192,3 +192,15 @@
 .flash-red {
   animation: flash-red-anim 0.6s ease-out;
 }
+
+/* Ticker tape animation */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-ticker {
+  animation: ticker-scroll 30s linear infinite;
+}
+.animate-ticker:hover {
+  animation-play-state: paused;
+}

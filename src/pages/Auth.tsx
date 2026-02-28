@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
-import { supabase } from "@/integrations/supabase/client";
+
+const FUNCTION_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/shoonya-api`;
 
 const Auth = () => {
   const { isLoggedIn, isLoading, saveSession } = useShoonyaSession();
@@ -36,8 +37,10 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("shoonya-api", {
-        body: {
+      const response = await fetch(FUNCTION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           action: "direct_login",
           user_code: form.user_code,
           password: form.password,
@@ -45,11 +48,11 @@ const Auth = () => {
           api_key: form.api_key,
           vendor_code: form.vendor_code,
           imei: form.imei,
-        },
+        }),
       });
 
-      if (error) throw new Error(error.message || "Login failed");
-      if (data?.error) throw new Error(data.error);
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || "Login failed");
 
       saveSession({
         userCode: form.user_code,

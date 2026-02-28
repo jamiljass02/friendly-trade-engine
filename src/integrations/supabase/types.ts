@@ -89,6 +89,78 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_settings: {
+        Row: {
+          created_at: string
+          daily_loss_auto_shutdown: boolean
+          daily_loss_limit: number
+          futures_sl_pct: number
+          id: string
+          index_sl_pct: number
+          kill_switch_activated_at: string | null
+          kill_switch_active: boolean
+          margin_alert_threshold_pct: number
+          max_delta: number
+          max_gamma: number
+          max_index_exposure: number
+          max_margin_utilization_pct: number
+          max_positions_per_asset: number
+          max_sector_concentration_pct: number
+          max_stock_exposure: number
+          max_theta: number
+          max_vega: number
+          stock_sl_pct: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_loss_auto_shutdown?: boolean
+          daily_loss_limit?: number
+          futures_sl_pct?: number
+          id?: string
+          index_sl_pct?: number
+          kill_switch_activated_at?: string | null
+          kill_switch_active?: boolean
+          margin_alert_threshold_pct?: number
+          max_delta?: number
+          max_gamma?: number
+          max_index_exposure?: number
+          max_margin_utilization_pct?: number
+          max_positions_per_asset?: number
+          max_sector_concentration_pct?: number
+          max_stock_exposure?: number
+          max_theta?: number
+          max_vega?: number
+          stock_sl_pct?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_loss_auto_shutdown?: boolean
+          daily_loss_limit?: number
+          futures_sl_pct?: number
+          id?: string
+          index_sl_pct?: number
+          kill_switch_activated_at?: string | null
+          kill_switch_active?: boolean
+          margin_alert_threshold_pct?: number
+          max_delta?: number
+          max_gamma?: number
+          max_index_exposure?: number
+          max_margin_utilization_pct?: number
+          max_positions_per_asset?: number
+          max_sector_concentration_pct?: number
+          max_stock_exposure?: number
+          max_theta?: number
+          max_vega?: number
+          stock_sl_pct?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       scheduled_trades: {
         Row: {
           created_at: string

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { Filter } from "lucide-react";
 import {
   ChevronDown,
   ChevronUp,
@@ -171,6 +172,10 @@ const PositionStrategyView = () => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [assetFilter, setAssetFilter] = useState<"all" | "index" | "stock">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "options" | "futures" | "mixed">("all");
+  const [sectorFilter, setSectorFilter] = useState("all");
+  const [expiryFilter, setExpiryFilter] = useState("all");
   const { toast } = useToast();
 
   const fetchPositions = async () => {
@@ -199,6 +204,21 @@ const PositionStrategyView = () => {
     [positions]
   );
 
+  const INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"];
+
+  const filteredGroups = useMemo(() => {
+    return strategyGroups.filter((g) => {
+      // Asset class
+      if (assetFilter === "index" && !INDICES.includes(g.underlying)) return false;
+      if (assetFilter === "stock" && INDICES.includes(g.underlying)) return false;
+      // Strategy type
+      if (typeFilter === "options" && g.legs.some((l) => l.type === "FUT")) return false;
+      if (typeFilter === "futures" && g.legs.every((l) => l.type !== "FUT")) return false;
+      if (typeFilter === "mixed" && !(g.legs.some((l) => l.type === "FUT") && g.legs.some((l) => l.type !== "FUT"))) return false;
+      return true;
+    });
+  }, [strategyGroups, assetFilter, typeFilter]);
+
   const toggleGroup = (id: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
@@ -208,7 +228,7 @@ const PositionStrategyView = () => {
     });
   };
 
-  const totalPnl = strategyGroups.reduce((s, g) => s + g.totalPnl, 0);
+  const totalPnl = filteredGroups.reduce((s, g) => s + g.totalPnl, 0);
 
   return (
     <div className="space-y-4">
@@ -220,7 +240,7 @@ const PositionStrategyView = () => {
               Strategy Positions
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {strategyGroups.length} strategies · {positions.length} legs
+              {filteredGroups.length} strategies · {positions.length} legs
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -255,8 +275,61 @@ const PositionStrategyView = () => {
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="glass-card rounded-xl px-5 py-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+
+          {/* Asset Class */}
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+            {(["all", "index", "stock"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setAssetFilter(f)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors capitalize",
+                  assetFilter === f
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {f === "all" ? "All Assets" : f === "index" ? "Index Only" : "Stock Only"}
+              </button>
+            ))}
+          </div>
+
+          {/* Strategy Type */}
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+            {(["all", "options", "futures", "mixed"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setTypeFilter(f)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors capitalize",
+                  typeFilter === f
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          {/* Active filter count */}
+          {(assetFilter !== "all" || typeFilter !== "all") && (
+            <button
+              onClick={() => { setAssetFilter("all"); setTypeFilter("all"); }}
+              className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Strategy Cards */}
-      {strategyGroups.map((group) => {
+      {filteredGroups.map((group) => {
         const isExpanded = expandedGroups.has(group.id);
 
         return (
@@ -468,10 +541,12 @@ const PositionStrategyView = () => {
         );
       })}
 
-      {strategyGroups.length === 0 && !loading && (
+      {filteredGroups.length === 0 && !loading && (
         <div className="glass-card rounded-xl p-8 text-center">
           <p className="text-xs text-muted-foreground">
-            No strategy positions to display.
+            {strategyGroups.length > 0
+              ? "No strategies match the current filters."
+              : "No strategy positions to display."}
           </p>
         </div>
       )}

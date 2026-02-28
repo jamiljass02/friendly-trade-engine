@@ -11,7 +11,7 @@ interface SelectedLeg {
 
 const Options = () => {
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
-  const [instrument] = useState("NIFTY");
+  const [instrument, setInstrument] = useState("NIFTY");
 
   const handleStrikeSelect = useCallback(
     (strike: number, type: "CE" | "PE", ltp: number) => {
@@ -51,6 +51,7 @@ const Options = () => {
               strike: l.strike,
               type: l.type,
             }))}
+            onInstrumentChange={setInstrument}
           />
           <StrategyExecutor
             selectedLegs={selectedLegs}

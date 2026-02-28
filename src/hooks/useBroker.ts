@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
+import { xhrFetch } from "@/lib/xhr-fetch";
 
 const FUNCTION_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/shoonya-api`;
 
@@ -12,19 +13,14 @@ export function useBroker() {
   const callBrokerAPI = async (action: string, params: Record<string, unknown> = {}) => {
     if (!session) throw new Error("Not connected");
 
-    const response = await fetch(FUNCTION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        session_token: session.sessionToken,
-        uid: session.userCode,
-        ...params,
-      }),
+    const { ok, data } = await xhrFetch(FUNCTION_URL, {
+      action,
+      session_token: session.sessionToken,
+      uid: session.userCode,
+      ...params,
     });
 
-    const data = await response.json();
-    if (!response.ok || data.error) throw new Error(data.error || "Request failed");
+    if (!ok || data.error) throw new Error(data.error || "Request failed");
     return data;
   };
 

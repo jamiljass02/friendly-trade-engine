@@ -2,6 +2,8 @@ import { useState, useCallback } from "react";
 import AppLayout from "@/components/AppLayout";
 import OptionsChain from "@/components/OptionsChain";
 import StrategyExecutor from "@/components/StrategyExecutor";
+import PayoffChart from "@/components/PayoffChart";
+import { getInstrument } from "@/lib/instruments";
 
 export interface SelectedLeg {
   strike: number;
@@ -13,6 +15,9 @@ export interface SelectedLeg {
 const Options = () => {
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [instrument, setInstrument] = useState("NIFTY");
+  const inst = getInstrument(instrument);
+  const defaultLot = inst?.lotSize || 25;
+  const [qty, setQty] = useState(defaultLot);
 
   const handleStrikeSelect = useCallback(
     (strike: number, type: "CE" | "PE", ltp: number) => {
@@ -45,6 +50,13 @@ const Options = () => {
 
   const handleClearAll = useCallback(() => setSelectedLegs([]), []);
 
+  const handleInstrumentChange = useCallback((symbol: string) => {
+    setInstrument(symbol);
+    setSelectedLegs([]);
+    const newInst = getInstrument(symbol);
+    setQty(newInst?.lotSize || 25);
+  }, []);
+
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
@@ -55,22 +67,34 @@ const Options = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-6">
-          <OptionsChain
-            onStrikeSelect={handleStrikeSelect}
-            selectedStrikes={selectedLegs.map((l) => ({
-              strike: l.strike,
-              type: l.type,
-            }))}
-            onInstrumentChange={setInstrument}
-          />
-          <StrategyExecutor
-            selectedLegs={selectedLegs}
-            onRemoveLeg={handleRemoveLeg}
-            onToggleAction={handleToggleAction}
-            onClearAll={handleClearAll}
-            instrument={instrument}
-          />
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
+          {/* Left: Chain + Payoff */}
+          <div className="space-y-6">
+            <OptionsChain
+              onStrikeSelect={handleStrikeSelect}
+              selectedStrikes={selectedLegs.map((l) => ({
+                strike: l.strike,
+                type: l.type,
+              }))}
+              onInstrumentChange={handleInstrumentChange}
+            />
+            {selectedLegs.length > 0 && (
+              <PayoffChart legs={selectedLegs} instrument={instrument} qty={qty} />
+            )}
+          </div>
+
+          {/* Right: Strategy Builder */}
+          <div className="xl:sticky xl:top-6 xl:self-start">
+            <StrategyExecutor
+              selectedLegs={selectedLegs}
+              onRemoveLeg={handleRemoveLeg}
+              onToggleAction={handleToggleAction}
+              onClearAll={handleClearAll}
+              instrument={instrument}
+              qty={qty}
+              onQtyChange={setQty}
+            />
+          </div>
         </div>
       </div>
     </AppLayout>

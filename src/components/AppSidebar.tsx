@@ -22,6 +22,7 @@ const navItems = [
   { icon: GitBranch, label: "Strategies", path: "/strategies" },
   { icon: ClipboardList, label: "Positions", path: "/positions" },
   { icon: BarChart3, label: "Options Chain", path: "/options" },
+  { icon: TrendingUp, label: "Futures", path: "/futures" },
   { icon: Activity, label: "Orders", path: "/orders" },
 ];
 

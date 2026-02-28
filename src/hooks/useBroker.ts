@@ -1,95 +1,45 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 
-interface BrokerCredentials {
-  user_code: string;
-  password: string;
-  totp_key: string;
-  vendor_code: string;
-  api_key: string;
-  imei: string;
-}
-
-interface BrokerStatus {
-  is_connected: boolean;
-  broker: string;
-  user_code: string;
-  last_connected_at: string | null;
-}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export function useBroker() {
-  const [isConnected, setIsConnected] = useState(false);
+  const { session, clearSession } = useShoonyaSession();
   const [isLoading, setIsLoading] = useState(false);
-  const [status, setStatus] = useState<BrokerStatus | null>(null);
   const { toast } = useToast();
 
   const callBrokerAPI = async (action: string, params: Record<string, unknown> = {}) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("Not authenticated");
+    if (!session) throw new Error("Not connected");
 
-    const response = await supabase.functions.invoke("shoonya-api", {
-      body: { action, ...params },
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/shoonya-api`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        action,
+        session_token: session.sessionToken,
+        uid: session.userCode,
+        ...params,
+      }),
     });
 
-    if (response.error) throw new Error(response.error.message);
-    return response.data;
-  };
-
-  const saveCredentials = async (creds: BrokerCredentials) => {
-    setIsLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { error } = await supabase
-        .from("broker_credentials")
-        .upsert({
-          user_id: user.id,
-          broker: "shoonya",
-          user_code: creds.user_code,
-          password: creds.password,
-          totp_key: creds.totp_key,
-          vendor_code: creds.vendor_code,
-          api_key: creds.api_key,
-          imei: creds.imei || "tradex-app",
-        }, { onConflict: "user_id" });
-
-      if (error) throw error;
-      toast({ title: "Credentials saved", description: "Broker credentials stored securely." });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const login = async (totp?: string) => {
-    setIsLoading(true);
-    try {
-      const result = await callBrokerAPI("login", { totp });
-      setIsConnected(true);
-      setStatus(prev => prev ? { ...prev, is_connected: true } : null);
-      toast({ title: "Connected!", description: `Logged in as ${result.username}` });
-      return result;
-    } catch (err: any) {
-      toast({ title: "Login failed", description: err.message, variant: "destructive" });
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Request failed");
+    return data;
   };
 
   const logout = async () => {
     try {
       await callBrokerAPI("logout");
-      setIsConnected(false);
-      setStatus(prev => prev ? { ...prev, is_connected: false } : null);
-      toast({ title: "Disconnected", description: "Broker session closed." });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch {
+      // Ignore logout errors
     }
+    clearSession();
+    toast({ title: "Disconnected", description: "Broker session closed." });
   };
 
   const getPositions = () => callBrokerAPI("positions");
@@ -129,36 +79,10 @@ export function useBroker() {
   const getOptionChain = (symbol: string, strikePrice: number, count?: number) =>
     callBrokerAPI("option_chain", { symbol, strike_price: strikePrice, count });
 
-  const checkStatus = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data } = await supabase
-        .from("broker_credentials")
-        .select("is_connected, broker, user_code, last_connected_at")
-        .eq("user_id", user.id)
-        .single();
-
-      if (data) {
-        setStatus(data as BrokerStatus);
-        setIsConnected(data.is_connected || false);
-      }
-    } catch {
-      // No credentials yet
-    }
-  };
-
-  useEffect(() => {
-    checkStatus();
-  }, []);
-
   return {
-    isConnected,
+    isConnected: !!session,
     isLoading,
-    status,
-    saveCredentials,
-    login,
+    session,
     logout,
     getPositions,
     getOrders,
@@ -170,6 +94,5 @@ export function useBroker() {
     getMarketData,
     searchScrip,
     getOptionChain,
-    checkStatus,
   };
 }

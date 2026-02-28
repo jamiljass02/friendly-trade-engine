@@ -1,20 +1,28 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
-import { Zap, Eye, EyeOff } from "lucide-react";
+import { Zap, Eye, EyeOff, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useShoonyaSession } from "@/hooks/useShoonyaSession";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const Auth = () => {
-  const { user, isLoading, signIn, signUp } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const { isLoggedIn, isLoading, saveSession } = useShoonyaSession();
+  const [showPasswords, setShowPasswords] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const [form, setForm] = useState({
+    user_code: "",
+    password: "",
+    totp: "",
+    api_key: "",
+    vendor_code: "",
+    imei: "tradex-app",
+  });
 
   if (isLoading) {
     return (
@@ -24,26 +32,50 @@ const Auth = () => {
     );
   }
 
-  if (user) return <Navigate to="/" replace />;
+  if (isLoggedIn) return <Navigate to="/" replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      if (isSignUp) {
-        const { error } = await signUp(email, password);
-        if (error) throw error;
-        toast({ title: "Account created!", description: "Check your email to verify your account." });
-      } else {
-        const { error } = await signIn(email, password);
-        if (error) throw error;
-      }
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/shoonya-api`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: "direct_login",
+          user_code: form.user_code,
+          password: form.password,
+          totp: form.totp,
+          api_key: form.api_key,
+          vendor_code: form.vendor_code,
+          imei: form.imei,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Login failed");
+
+      saveSession({
+        userCode: form.user_code,
+        sessionToken: data.session_token,
+        username: data.username,
+        actid: data.actid,
+        loginTime: new Date().toISOString(),
+      });
+
+      toast({ title: "Connected!", description: `Logged in as ${data.username}` });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Login Failed", description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
+
+  const updateField = (key: string, value: string) =>
+    setForm(prev => ({ ...prev, [key]: value }));
 
   return (
     <div className="min-h-screen bg-background terminal-grid flex items-center justify-center p-4">
@@ -58,59 +90,46 @@ const Auth = () => {
           </div>
         </div>
 
-        <h2 className="text-lg font-semibold text-foreground text-center mb-6">
-          {isSignUp ? "Create Account" : "Welcome Back"}
-        </h2>
+        <h2 className="text-lg font-semibold text-foreground text-center mb-2">Shoonya Login</h2>
+        <p className="text-xs text-muted-foreground text-center mb-6">Connect with your Finvasia broker account</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs text-muted-foreground uppercase tracking-wider">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="trader@example.com"
-              className="bg-secondary/50 border-border/50 font-mono text-sm"
-              required
-            />
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => setShowPasswords(!showPasswords)}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              {showPasswords ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+              {showPasswords ? "Hide" : "Show"} secrets
+            </button>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-xs text-muted-foreground uppercase tracking-wider">Password</Label>
-            <div className="relative">
+
+          {[
+            { key: "user_code", label: "User ID", placeholder: "FA12345", secret: false, required: true },
+            { key: "password", label: "Password", placeholder: "Trading password", secret: true, required: true },
+            { key: "totp", label: "TOTP Code", placeholder: "6-digit code or TOTP secret", secret: false, required: true },
+            { key: "api_key", label: "API Key", placeholder: "From Shoonya API portal", secret: true, required: true },
+            { key: "vendor_code", label: "Vendor Code", placeholder: "Vendor code (optional)", secret: false, required: false },
+          ].map((field) => (
+            <div key={field.key} className="space-y-1.5">
+              <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</Label>
               <Input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="bg-secondary/50 border-border/50 font-mono text-sm pr-10"
-                required
-                minLength={6}
+                type={field.secret && !showPasswords ? "password" : "text"}
+                value={form[field.key as keyof typeof form]}
+                onChange={(e) => updateField(field.key, e.target.value)}
+                placeholder={field.placeholder}
+                className="bg-secondary/50 border-border/50 font-mono text-sm"
+                required={field.required}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
             </div>
-          </div>
+          ))}
+
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Processing..." : isSignUp ? "Create Account" : "Sign In"}
+            <PlugZap className="w-4 h-4 mr-2" />
+            {loading ? "Connecting..." : "Connect to Shoonya"}
           </Button>
         </form>
-
-        <p className="text-center text-sm text-muted-foreground mt-6">
-          {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
-          <button
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-primary hover:underline font-medium"
-          >
-            {isSignUp ? "Sign In" : "Sign Up"}
-          </button>
-        </p>
       </div>
     </div>
   );

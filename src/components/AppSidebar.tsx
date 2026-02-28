@@ -21,7 +21,7 @@ const navItems = [
 
 const AppSidebar = () => {
   const location = useLocation();
-  const { isConnected, status } = useBroker();
+  const { isConnected, session } = useBroker();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50">
@@ -44,9 +44,9 @@ const AppSidebar = () => {
             {isConnected ? "Shoonya Connected" : "Broker Disconnected"}
           </span>
         </div>
-        {isConnected && status?.user_code && (
+        {isConnected && session?.userCode && (
           <div className="flex items-center gap-1 mt-1">
-            <span className="text-[10px] font-mono text-primary">{status.user_code}</span>
+            <span className="text-[10px] font-mono text-primary">{session.userCode}</span>
           </div>
         )}
         <div className="flex items-center gap-3 mt-2">

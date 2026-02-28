@@ -176,3 +176,19 @@
     background-color: hsl(var(--chart-loss));
   }
 }
+
+/* P&L flash animations */
+@keyframes flash-green-anim {
+  0% { background-color: hsl(var(--chart-profit) / 0.3); }
+  100% { background-color: transparent; }
+}
+@keyframes flash-red-anim {
+  0% { background-color: hsl(var(--chart-loss) / 0.3); }
+  100% { background-color: transparent; }
+}
+.flash-green {
+  animation: flash-green-anim 0.6s ease-out;
+}
+.flash-red {
+  animation: flash-red-anim 0.6s ease-out;
+}

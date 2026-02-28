@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useBroker } from "@/hooks/useBroker";
 
 export interface Position {
@@ -10,6 +10,7 @@ export interface Position {
   ltp: number;
   pnl: number;
   pnlPercent: number;
+  prevPnl?: number;
   rawData?: Record<string, unknown>;
 }
 
@@ -58,31 +59,158 @@ function generateMockPositions(): Position[] {
   ];
 }
 
+// Simulate LTP ticks for mock data
+function applyMockTick(positions: Position[]): Position[] {
+  return positions.map((p) => {
+    const change = (Math.random() - 0.48) * p.ltp * 0.002; // slight upward bias
+    const newLtp = Math.max(0.05, p.ltp + change);
+    const mult = p.side === "BUY" ? 1 : -1;
+    const newPnl = (newLtp - p.avgPrice) * p.qty * mult;
+    const cost = p.avgPrice * p.qty;
+    return {
+      ...p,
+      prevPnl: p.pnl,
+      ltp: Math.round(newLtp * 100) / 100,
+      pnl: Math.round(newPnl * 100) / 100,
+      pnlPercent: cost > 0 ? Math.round((newPnl / cost) * 10000) / 100 : 0,
+    };
+  });
+}
+
+export interface Alert {
+  id: string;
+  type: "margin" | "expiry";
+  message: string;
+  severity: "warning" | "critical";
+  timestamp: number;
+}
+
+function computeAlerts(positions: Position[]): Alert[] {
+  const alerts: Alert[] = [];
+  const now = new Date();
+
+  // Margin alert (mock: >80% util)
+  const marginUsed = positions.reduce((s, p) => {
+    const n = p.avgPrice * p.qty;
+    return s + (p.type === "FUT" ? n * 0.12 : p.side === "SELL" ? n * 0.15 : n * 0.05);
+  }, 0);
+  const util = (marginUsed / 500000) * 100;
+  if (util > 80) {
+    alerts.push({
+      id: "margin-high",
+      type: "margin",
+      message: `Margin utilization at ${util.toFixed(0)}% — consider reducing exposure`,
+      severity: util > 95 ? "critical" : "warning",
+      timestamp: Date.now(),
+    });
+  }
+
+  // Expiry warnings
+  const expiryMatch = (sym: string) => {
+    const m = sym.match(/(\d{2})([A-Z]{3})(\d{2})/);
+    if (!m) return null;
+    const months: Record<string, number> = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+    return new Date(2000 + parseInt(m[3]), months[m[2]] || 0, parseInt(m[1]));
+  };
+
+  const checked = new Set<string>();
+  for (const p of positions) {
+    const exp = expiryMatch(p.symbol);
+    if (!exp) continue;
+    const dte = Math.ceil((exp.getTime() - now.getTime()) / 86400000);
+    const expKey = p.symbol.match(/(\d{2}[A-Z]{3}\d{2})/)?.[1] || "";
+    if (checked.has(expKey)) continue;
+    checked.add(expKey);
+
+    if (dte <= 1) {
+      alerts.push({ id: `exp-${expKey}`, type: "expiry", message: `Expiry TODAY for ${expKey} contracts`, severity: "critical", timestamp: Date.now() });
+    } else if (dte <= 3) {
+      alerts.push({ id: `exp-${expKey}`, type: "expiry", message: `${dte} days to expiry for ${expKey} contracts`, severity: "critical", timestamp: Date.now() });
+    } else if (dte <= 7) {
+      alerts.push({ id: `exp-${expKey}`, type: "expiry", message: `${dte} days to expiry for ${expKey} contracts`, severity: "warning", timestamp: Date.now() });
+    }
+  }
+
+  return alerts;
+}
+
 export function usePositions() {
   const { isConnected, getPositions } = useBroker();
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(false);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchPositions = useCallback(async () => {
     if (!isConnected) {
-      setPositions(generateMockPositions());
+      setPositions((prev) => prev.length > 0 ? prev : generateMockPositions());
       return;
     }
     setLoading(true);
     try {
       const data = await getPositions();
       const parsed = parsePositions(data);
-      setPositions(parsed.length > 0 ? parsed : generateMockPositions());
+      setPositions((prev) => {
+        const newPos = parsed.length > 0 ? parsed : generateMockPositions();
+        // Carry prevPnl for flash animations
+        return newPos.map((np) => {
+          const old = prev.find((o) => o.symbol === np.symbol);
+          return { ...np, prevPnl: old?.pnl };
+        });
+      });
     } catch {
-      setPositions(generateMockPositions());
+      setPositions((prev) => prev.length > 0 ? prev : generateMockPositions());
     } finally {
       setLoading(false);
     }
   }, [isConnected, getPositions]);
 
+  // Initial fetch
   useEffect(() => {
     fetchPositions();
   }, [isConnected]);
 
-  return { positions, loading, refresh: fetchPositions };
+  // Auto-refresh: broker every 5s, mock tick every 1s
+  useEffect(() => {
+    if (!autoRefresh) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (tickRef.current) clearInterval(tickRef.current);
+      return;
+    }
+
+    if (isConnected) {
+      intervalRef.current = setInterval(fetchPositions, 5000);
+    } else {
+      // Mock LTP ticks every 1s
+      tickRef.current = setInterval(() => {
+        setPositions((prev) => applyMockTick(prev));
+      }, 1000);
+    }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (tickRef.current) clearInterval(tickRef.current);
+    };
+  }, [autoRefresh, isConnected, fetchPositions]);
+
+  // Compute alerts whenever positions change
+  useEffect(() => {
+    setAlerts(computeAlerts(positions));
+  }, [positions]);
+
+  const dismissAlert = useCallback((id: string) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  return {
+    positions,
+    loading,
+    alerts,
+    autoRefresh,
+    setAutoRefresh,
+    dismissAlert,
+    refresh: fetchPositions,
+  };
 }

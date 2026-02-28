@@ -20,6 +20,8 @@ interface StrategyExecutorProps {
   onToggleAction: (strike: number, type: "CE" | "PE") => void;
   onClearAll: () => void;
   instrument: string;
+  qty?: number;
+  onQtyChange?: (qty: number) => void;
 }
 
 const StrategyExecutor = ({
@@ -28,12 +30,16 @@ const StrategyExecutor = ({
   onToggleAction,
   onClearAll,
   instrument,
+  qty: externalQty,
+  onQtyChange,
 }: StrategyExecutorProps) => {
   const { isConnected, placeOrder } = useBroker();
   const { toast } = useToast();
   const inst = getInstrument(instrument);
   const defaultLot = inst?.lotSize || 25;
-  const [qty, setQty] = useState(defaultLot);
+  const [internalQty, setInternalQty] = useState(defaultLot);
+  const qty = externalQty ?? internalQty;
+  const setQty = onQtyChange ?? setInternalQty;
   const [executing, setExecuting] = useState(false);
 
   const strategyType: StrategyType = (() => {

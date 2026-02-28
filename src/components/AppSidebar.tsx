@@ -23,6 +23,7 @@ const navItems = [
   { icon: ClipboardList, label: "Positions", path: "/positions" },
   { icon: BarChart3, label: "Options Chain", path: "/options" },
   { icon: TrendingUp, label: "Futures", path: "/futures" },
+  { icon: Zap, label: "Risk Manager", path: "/risk" },
   { icon: Activity, label: "Orders", path: "/orders" },
 ];
 

@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Activity,
 } from "lucide-react";
+import { useBroker } from "@/hooks/useBroker";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -20,6 +21,7 @@ const navItems = [
 
 const AppSidebar = () => {
   const location = useLocation();
+  const { isConnected, status } = useBroker();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50">
@@ -34,12 +36,19 @@ const AppSidebar = () => {
         </div>
       </div>
 
-      {/* Market Status */}
+      {/* Broker Status */}
       <div className="px-5 py-3 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-profit animate-pulse-glow" />
-          <span className="text-xs text-muted-foreground">Market Open</span>
+          <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-profit animate-pulse" : "bg-muted-foreground"}`} />
+          <span className="text-xs text-muted-foreground">
+            {isConnected ? "Shoonya Connected" : "Broker Disconnected"}
+          </span>
         </div>
+        {isConnected && status?.user_code && (
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-[10px] font-mono text-primary">{status.user_code}</span>
+          </div>
+        )}
         <div className="flex items-center gap-3 mt-2">
           <div className="flex items-center gap-1">
             <TrendingUp className="w-3 h-3 text-profit" />
@@ -73,14 +82,19 @@ const AppSidebar = () => {
       <div className="px-3 py-4 border-t border-sidebar-border">
         <Link
           to="/settings"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+            location.pathname === "/settings"
+              ? "bg-primary/10 text-primary"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
+          }`}
         >
           <Settings className="w-4 h-4 text-muted-foreground" />
           <span>Settings</span>
         </Link>
         <div className="mt-3 px-3">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Paper Trading</div>
-          <div className="text-xs font-mono text-foreground mt-1">₹10,00,000.00</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            {isConnected ? "Live Trading" : "Paper Trading"}
+          </div>
         </div>
       </div>
     </aside>

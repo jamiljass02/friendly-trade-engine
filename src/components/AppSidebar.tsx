@@ -7,21 +7,20 @@ import {
   Settings,
   Zap,
   Activity,
-  Sun,
-  Moon,
   TrendingUp,
   LineChart,
   Briefcase,
   PanelLeftClose,
   PanelLeft,
+  Bot,
 } from "lucide-react";
 import { useBroker } from "@/hooks/useBroker";
-import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: GitBranch, label: "Strategy Builder", path: "/strategies" },
+  { icon: Bot, label: "Algo", path: "/algo" },
   { icon: BarChart3, label: "Option Chain", path: "/options" },
   { icon: TrendingUp, label: "Futures", path: "/futures" },
   { icon: ClipboardList, label: "Positions", path: "/positions" },
@@ -39,7 +38,6 @@ interface AppSidebarProps {
 const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const { isConnected, session } = useBroker();
-  const { theme, toggleTheme } = useTheme();
 
   return (
     <aside
@@ -133,22 +131,6 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
 
       {/* Footer */}
       <div className="px-2 py-3 border-t border-sidebar-border space-y-1">
-        <button
-          onClick={toggleTheme}
-          title={collapsed ? (theme === "dark" ? "Light Mode" : "Dark Mode") : undefined}
-          className={cn(
-            "flex items-center gap-2 rounded-lg text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors w-full",
-            collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
-          )}
-        >
-          {theme === "dark" ? (
-            <Sun className="w-4 h-4 text-warning shrink-0" />
-          ) : (
-            <Moon className="w-4 h-4 text-primary shrink-0" />
-          )}
-          {!collapsed && <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
-        </button>
-
         <Link
           to="/settings"
           title={collapsed ? "Settings" : undefined}

@@ -12,6 +12,7 @@ import Options from "./pages/Options";
 import Futures from "./pages/Futures";
 import Holdings from "./pages/Holdings";
 import Analytics from "./pages/Analytics";
+import Sandbox from "./pages/Sandbox";
 import RiskManagement from "./pages/RiskManagement";
 import Orders from "./pages/Orders";
 import Settings from "./pages/Settings";
@@ -49,6 +50,7 @@ const App = () => (
           <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
           <Route path="/risk" element={<ProtectedRoute><RiskManagement /></ProtectedRoute>} />
           <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+          <Route path="/sandbox" element={<ProtectedRoute><Sandbox /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>

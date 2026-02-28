@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Bot,
+  FlaskConical,
 } from "lucide-react";
 import { useBroker } from "@/hooks/useBroker";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ const navItems = [
   { icon: Briefcase, label: "Holdings", path: "/holdings" },
   { icon: Zap, label: "Risk Manager", path: "/risk" },
   { icon: Activity, label: "Orders", path: "/orders" },
+  { icon: FlaskConical, label: "Sandbox", path: "/sandbox" },
   { icon: LineChart, label: "Analytics", path: "/analytics" },
 ];
 

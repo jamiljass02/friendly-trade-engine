@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+import { supabase } from "@/integrations/supabase/client";
 
 export function useBroker() {
   const { session, clearSession } = useShoonyaSession();
@@ -13,22 +11,17 @@ export function useBroker() {
   const callBrokerAPI = async (action: string, params: Record<string, unknown> = {}) => {
     if (!session) throw new Error("Not connected");
 
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/shoonya-api`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
+    const { data, error } = await supabase.functions.invoke("shoonya-api", {
+      body: {
         action,
         session_token: session.sessionToken,
         uid: session.userCode,
         ...params,
-      }),
+      },
     });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Request failed");
+    if (error) throw new Error(error.message || "Request failed");
+    if (data?.error) throw new Error(data.error);
     return data;
   };
 

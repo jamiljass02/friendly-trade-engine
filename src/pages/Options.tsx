@@ -23,9 +23,7 @@ const Options = () => {
     (strike: number, type: "CE" | "PE", ltp: number) => {
       setSelectedLegs((prev) => {
         const exists = prev.some((l) => l.strike === strike && l.type === type);
-        if (exists) {
-          return prev.filter((l) => !(l.strike === strike && l.type === type));
-        }
+        if (exists) return prev.filter((l) => !(l.strike === strike && l.type === type));
         return [...prev, { strike, type, ltp, action: "SELL" as const }];
       });
     },
@@ -33,18 +31,12 @@ const Options = () => {
   );
 
   const handleRemoveLeg = useCallback((strike: number, type: "CE" | "PE") => {
-    setSelectedLegs((prev) =>
-      prev.filter((l) => !(l.strike === strike && l.type === type))
-    );
+    setSelectedLegs((prev) => prev.filter((l) => !(l.strike === strike && l.type === type)));
   }, []);
 
   const handleToggleAction = useCallback((strike: number, type: "CE" | "PE") => {
     setSelectedLegs((prev) =>
-      prev.map((l) =>
-        l.strike === strike && l.type === type
-          ? { ...l, action: l.action === "BUY" ? "SELL" : "BUY" }
-          : l
-      )
+      prev.map((l) => l.strike === strike && l.type === type ? { ...l, action: l.action === "BUY" ? "SELL" : "BUY" } : l)
     );
   }, []);
 
@@ -68,14 +60,10 @@ const Options = () => {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
-          {/* Left: Chain + Payoff */}
           <div className="space-y-6">
             <OptionsChain
               onStrikeSelect={handleStrikeSelect}
-              selectedStrikes={selectedLegs.map((l) => ({
-                strike: l.strike,
-                type: l.type,
-              }))}
+              selectedStrikes={selectedLegs.map((l) => ({ strike: l.strike, type: l.type }))}
               onInstrumentChange={handleInstrumentChange}
             />
             {selectedLegs.length > 0 && (
@@ -83,7 +71,6 @@ const Options = () => {
             )}
           </div>
 
-          {/* Right: Strategy Builder */}
           <div className="xl:sticky xl:top-6 xl:self-start">
             <StrategyExecutor
               selectedLegs={selectedLegs}

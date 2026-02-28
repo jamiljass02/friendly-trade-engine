@@ -13,12 +13,15 @@ export function xhrFetch(url: string, body: Record<string, unknown>): Promise<{ 
         const data = JSON.parse(xhr.responseText);
         resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
       } catch {
-        reject(new Error("Invalid JSON response"));
+        reject(new Error(`Invalid response (status ${xhr.status}): ${xhr.responseText?.substring(0, 200)}`));
       }
     };
     
-    xhr.onerror = () => reject(new Error("Network error - please check your connection"));
-    xhr.ontimeout = () => reject(new Error("Request timed out"));
+    xhr.onerror = () => {
+      console.error("XHR error - readyState:", xhr.readyState, "status:", xhr.status, "url:", url);
+      reject(new Error(`Network error calling ${url} - this may be caused by a browser extension (ad blocker, privacy tool) blocking the request. Try disabling extensions or using incognito mode.`));
+    };
+    xhr.ontimeout = () => reject(new Error("Request timed out after 30s"));
     xhr.timeout = 30000;
     
     xhr.send(JSON.stringify(body));

@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import { xhrFetch } from "@/lib/xhr-fetch";
 
-const FUNCTION_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/shoonya-api`;
+const FUNCTION_URL = "https://ytzzmnharipqcucfachn.supabase.co/functions/v1/shoonya-api";
 
 const Auth = () => {
   const { isLoggedIn, isLoading, saveSession } = useShoonyaSession();

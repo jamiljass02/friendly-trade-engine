@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
+import { xhrFetch } from "@/lib/xhr-fetch";
 
 const FUNCTION_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/shoonya-api`;
 
@@ -37,25 +38,17 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      console.log("Calling edge function at:", FUNCTION_URL);
-      const response = await fetch(FUNCTION_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "direct_login",
-          user_code: form.user_code,
-          password: form.password,
-          totp: form.totp,
-          api_key: form.api_key,
-          vendor_code: form.vendor_code,
-          imei: form.imei,
-        }),
+      const { ok, data } = await xhrFetch(FUNCTION_URL, {
+        action: "direct_login",
+        user_code: form.user_code,
+        password: form.password,
+        totp: form.totp,
+        api_key: form.api_key,
+        vendor_code: form.vendor_code,
+        imei: form.imei,
       });
 
-      console.log("Response status:", response.status);
-      const data = await response.json();
-      console.log("Response data:", data);
-      if (!response.ok || data.error) throw new Error(data.error || "Login failed");
+      if (!ok || data.error) throw new Error(data.error || "Login failed");
 
       saveSession({
         userCode: form.user_code,

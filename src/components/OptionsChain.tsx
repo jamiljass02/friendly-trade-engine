@@ -100,7 +100,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [] }: OptionsChainProp
   const { toast } = useToast();
 
   const expiries = ["27 Feb", "6 Mar", "13 Mar", "27 Mar"];
-  const indices = ["NIFTY", "BANKNIFTY"];
+  const indices = ["NIFTY", "BANKNIFTY", "SENSEX"];
   const daysToExpiry = 5; // Approximate
 
   const isSelected = useCallback(

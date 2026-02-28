@@ -89,6 +89,110 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_trades: {
+        Row: {
+          created_at: string
+          id: string
+          instrument: string
+          is_active: boolean
+          last_executed_at: string | null
+          otm_percent: number | null
+          premium_target: number | null
+          quantity: number
+          schedule_time: string
+          selection_mode: string
+          stop_loss_percent: number
+          strategy_type: string
+          telegram_alert: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instrument?: string
+          is_active?: boolean
+          last_executed_at?: string | null
+          otm_percent?: number | null
+          premium_target?: number | null
+          quantity?: number
+          schedule_time?: string
+          selection_mode?: string
+          stop_loss_percent?: number
+          strategy_type?: string
+          telegram_alert?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instrument?: string
+          is_active?: boolean
+          last_executed_at?: string | null
+          otm_percent?: number | null
+          premium_target?: number | null
+          quantity?: number
+          schedule_time?: string
+          selection_mode?: string
+          stop_loss_percent?: number
+          strategy_type?: string
+          telegram_alert?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trade_executions: {
+        Row: {
+          error_message: string | null
+          executed_at: string
+          id: string
+          instrument: string
+          legs: Json
+          schedule_id: string | null
+          status: string
+          stop_loss_price: number | null
+          strategy_type: string
+          total_premium: number | null
+          user_id: string
+        }
+        Insert: {
+          error_message?: string | null
+          executed_at?: string
+          id?: string
+          instrument: string
+          legs?: Json
+          schedule_id?: string | null
+          status?: string
+          stop_loss_price?: number | null
+          strategy_type: string
+          total_premium?: number | null
+          user_id: string
+        }
+        Update: {
+          error_message?: string | null
+          executed_at?: string
+          id?: string
+          instrument?: string
+          legs?: Json
+          schedule_id?: string | null
+          status?: string
+          stop_loss_price?: number | null
+          strategy_type?: string
+          total_premium?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_executions_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_trades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

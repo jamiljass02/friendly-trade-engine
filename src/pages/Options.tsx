@@ -3,10 +3,11 @@ import AppLayout from "@/components/AppLayout";
 import OptionsChain from "@/components/OptionsChain";
 import StrategyExecutor from "@/components/StrategyExecutor";
 
-interface SelectedLeg {
+export interface SelectedLeg {
   strike: number;
   type: "CE" | "PE";
   ltp: number;
+  action: "BUY" | "SELL";
 }
 
 const Options = () => {
@@ -20,7 +21,7 @@ const Options = () => {
         if (exists) {
           return prev.filter((l) => !(l.strike === strike && l.type === type));
         }
-        return [...prev, { strike, type, ltp }];
+        return [...prev, { strike, type, ltp, action: "SELL" as const }];
       });
     },
     []
@@ -32,6 +33,16 @@ const Options = () => {
     );
   }, []);
 
+  const handleToggleAction = useCallback((strike: number, type: "CE" | "PE") => {
+    setSelectedLegs((prev) =>
+      prev.map((l) =>
+        l.strike === strike && l.type === type
+          ? { ...l, action: l.action === "BUY" ? "SELL" : "BUY" }
+          : l
+      )
+    );
+  }, []);
+
   const handleClearAll = useCallback(() => setSelectedLegs([]), []);
 
   return (
@@ -40,7 +51,7 @@ const Options = () => {
         <div>
           <h1 className="text-xl font-bold text-foreground">Options Chain</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Click on LTP values to build Short Straddle/Strangle strategies
+            Click on LTP values to build strategies · Toggle BUY/SELL per leg
           </p>
         </div>
 
@@ -56,6 +67,7 @@ const Options = () => {
           <StrategyExecutor
             selectedLegs={selectedLegs}
             onRemoveLeg={handleRemoveLeg}
+            onToggleAction={handleToggleAction}
             onClearAll={handleClearAll}
             instrument={instrument}
           />

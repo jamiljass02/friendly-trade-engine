@@ -46,6 +46,9 @@ export interface StrategyLeg {
 }
 
 type InstrumentFilter = "all" | "index" | "stock";
+type StrategyTypeFilter = "all" | "options" | "futures" | "mixed";
+
+const SECTORS = [...new Set(FNO_STOCKS.map((s) => s.industry).filter(Boolean))] as string[];
 
 // Black-Scholes Greeks approximation
 function calcGreeks(
@@ -109,6 +112,9 @@ const EnhancedStrategyBuilder = () => {
   const [showStockSearch, setShowStockSearch] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [strategyTypeFilter, setStrategyTypeFilter] = useState<StrategyTypeFilter>("all");
+  const [sectorFilter, setSectorFilter] = useState<string>("all");
+  const [expiryWeekFilter, setExpiryWeekFilter] = useState<string>("all");
 
   // For payoff chart, derive simplified legs
   const payoffLegs = useMemo(
@@ -129,15 +135,27 @@ const EnhancedStrategyBuilder = () => {
   const primaryLotSize = primaryInst?.lotSize || 25;
 
   const filteredStocks = useMemo(() => {
-    if (!stockSearch) return FNO_STOCKS.slice(0, 12);
+    let stocks = FNO_STOCKS;
+    if (sectorFilter !== "all") {
+      stocks = stocks.filter((s) => s.industry === sectorFilter);
+    }
+    if (!stockSearch) return stocks.slice(0, 12);
     const q = stockSearch.toLowerCase();
-    return FNO_STOCKS.filter(
-      (s) =>
-        s.symbol.toLowerCase().includes(q) ||
-        s.name.toLowerCase().includes(q) ||
-        s.industry?.toLowerCase().includes(q)
-    ).slice(0, 12);
-  }, [stockSearch]);
+    return stocks
+      .filter(
+        (s) =>
+          s.symbol.toLowerCase().includes(q) ||
+          s.name.toLowerCase().includes(q) ||
+          s.industry?.toLowerCase().includes(q)
+      )
+      .slice(0, 12);
+  }, [stockSearch, sectorFilter]);
+
+  // Available expiry weeks for filter
+  const availableExpiries = useMemo(() => {
+    const expiries = getUpcomingExpiries(true, 8);
+    return expiries.map((e) => e.label);
+  }, []);
 
   const addLeg = useCallback(
     (underlying = "NIFTY", type: "index_option" | "stock_option" | "index_future" | "stock_future" = "index_option") => {
@@ -430,37 +448,88 @@ const EnhancedStrategyBuilder = () => {
               ))}
             </div>
 
-            {/* Quick Add Buttons */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {instrumentFilter !== "stock" && (
-                <>
-                  {INDEX_INSTRUMENTS.slice(0, 4).map((idx) => (
-                    <button
-                      key={idx.symbol}
-                      onClick={() => addLeg(idx.symbol, "index_option")}
-                      className="px-2 py-1 rounded text-[10px] font-medium bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors"
-                    >
-                      + {idx.symbol}
-                    </button>
-                  ))}
+            {/* Strategy Type Filter */}
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+              {(["all", "options", "futures", "mixed"] as StrategyTypeFilter[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setStrategyTypeFilter(f)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors capitalize",
+                    strategyTypeFilter === f
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {/* Sector Filter (stocks) */}
+            {instrumentFilter !== "index" && (
+              <select
+                value={sectorFilter}
+                onChange={(e) => setSectorFilter(e.target.value)}
+                className="text-[10px] px-2 py-1.5 rounded-md border border-border/50 outline-none bg-muted text-foreground cursor-pointer"
+              >
+                <option value="all">All Sectors</option>
+                {SECTORS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Expiry Week Filter */}
+            <select
+              value={expiryWeekFilter}
+              onChange={(e) => setExpiryWeekFilter(e.target.value)}
+              className="text-[10px] px-2 py-1.5 rounded-md border border-border/50 outline-none bg-muted text-foreground cursor-pointer"
+            >
+              <option value="all">All Expiries</option>
+              {availableExpiries.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Quick Add Buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+            {instrumentFilter !== "stock" && strategyTypeFilter !== "futures" && (
+              <>
+                {INDEX_INSTRUMENTS.slice(0, 4).map((idx) => (
                   <button
-                    onClick={() => addLeg("NIFTY", "index_future")}
+                    key={idx.symbol}
+                    onClick={() => addLeg(idx.symbol, "index_option")}
+                    className="px-2 py-1 rounded text-[10px] font-medium bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors"
+                  >
+                    + {idx.symbol} Opt
+                  </button>
+                ))}
+              </>
+            )}
+            {instrumentFilter !== "stock" && strategyTypeFilter !== "options" && (
+              <>
+                {INDEX_INSTRUMENTS.slice(0, 3).map((idx) => (
+                  <button
+                    key={`fut-${idx.symbol}`}
+                    onClick={() => addLeg(idx.symbol, "index_future")}
                     className="px-2 py-1 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
                   >
-                    + Index Future
+                    + {idx.symbol} Fut
                   </button>
-                </>
-              )}
-              {instrumentFilter !== "index" && (
-                <button
-                  onClick={() => setShowStockSearch(!showStockSearch)}
-                  className="px-2 py-1 rounded text-[10px] font-medium bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors flex items-center gap-1"
-                >
-                  <Search className="w-2.5 h-2.5" />
-                  + Stock
-                </button>
-              )}
-            </div>
+                ))}
+              </>
+            )}
+            {instrumentFilter !== "index" && (
+              <button
+                onClick={() => setShowStockSearch(!showStockSearch)}
+                className="px-2 py-1 rounded text-[10px] font-medium bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors flex items-center gap-1"
+              >
+                <Search className="w-2.5 h-2.5" />
+                + Stock
+              </button>
+            )}
           </div>
 
           {/* Stock Search */}

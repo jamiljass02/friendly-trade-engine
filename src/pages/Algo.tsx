@@ -11,12 +11,12 @@ import {
   Plus,
   Clock,
   TrendingUp,
+  TrendingDown,
   Shield,
   Trash2,
   Bell,
   BellOff,
   Target,
-  TrendingDown,
   Percent,
   Loader2,
   CalendarDays,
@@ -27,1003 +27,1031 @@ import {
   Timer,
   Repeat,
   Settings2,
+  Zap,
+  Copy,
+  BarChart3,
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  Layers,
+  PlusCircle,
+  MinusCircle,
+  Activity,
+  Eye,
+  Rocket,
+  History,
+  BookOpen,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useScheduledTrades } from "@/hooks/useScheduledTrades";
 import { useBroker } from "@/hooks/useBroker";
 import { getUpcomingExpiries, getDaysToExpiry } from "@/lib/expiry-utils";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+  BarChart,
+  Bar,
+  Cell,
+} from "recharts";
+import { useBacktesting, type BacktestSummary } from "@/hooks/useBacktesting";
 
-type RecurrenceType = "once" | "daily" | "weekly" | "monthly";
-type AlgoCategory = "schedule" | "recurring" | "rollover" | "expiry";
+// ── Types ──
+interface StrategyLeg {
+  id: string;
+  segment: "OPT" | "FUT";
+  side: "BUY" | "SELL";
+  optionType: "CE" | "PE";
+  strikeSelection: "ATM" | "ATM+1" | "ATM+2" | "ATM+3" | "ATM-1" | "ATM-2" | "ATM-3" | "CUSTOM";
+  customStrike?: number;
+  lots: number;
+  expiry: "current" | "next" | "far";
+}
 
-const lotSize: Record<string, number> = {
-  NIFTY: 50, BANKNIFTY: 15, SENSEX: 10,
-  RELIANCE: 250, TCS: 150, HDFCBANK: 550, INFY: 300, ICICIBANK: 700,
-};
+interface EntryCondition {
+  id: string;
+  type: "time" | "premium" | "indicator" | "price_move" | "iv" | "oi_change";
+  operator: ">" | "<" | "=" | ">=" | "<=";
+  value: string;
+  indicator?: string;
+}
 
-const instruments = [
-  "NIFTY", "BANKNIFTY", "SENSEX",
-  "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "BHARTIARTL",
+interface ExitCondition {
+  id: string;
+  type: "time" | "sl_pct" | "target_pct" | "sl_points" | "target_points" | "trailing_sl" | "mtm_loss" | "mtm_profit";
+  value: string;
+}
+
+interface AlgoStrategy {
+  id: string;
+  name: string;
+  instrument: string;
+  legs: StrategyLeg[];
+  entryConditions: EntryCondition[];
+  exitConditions: ExitCondition[];
+  status: "draft" | "backtested" | "deployed" | "paused";
+  recurrence: "once" | "daily" | "weekly" | "monthly";
+  telegramAlert: boolean;
+  createdAt: Date;
+  backtestResult?: BacktestSummary;
+}
+
+// ── Constants ──
+const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
+const lotSizes: Record<string, number> = { NIFTY: 50, BANKNIFTY: 15, SENSEX: 10, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 10 };
+const strikeOptions = ["ATM", "ATM+1", "ATM+2", "ATM+3", "ATM-1", "ATM-2", "ATM-3", "CUSTOM"];
+
+const indicatorOptions = [
+  "RSI (14)", "MACD (12,26,9)", "EMA (9)", "EMA (21)", "SMA (20)", "SMA (50)",
+  "Bollinger Bands", "VWAP", "Supertrend", "ADX", "Stochastic RSI",
+  "ATR (14)", "CCI (20)", "Williams %R", "Parabolic SAR", "Ichimoku",
 ];
 
-const weeklyEligible = ["NIFTY", "SENSEX"];
+const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "backtestResult">[] = [
+  {
+    name: "Short Straddle",
+    instrument: "NIFTY",
+    legs: [
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+    ],
+    entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
+    exitConditions: [
+      { id: "1", type: "sl_pct", value: "30" },
+      { id: "2", type: "time", value: "15:15" },
+    ],
+    recurrence: "daily",
+    telegramAlert: true,
+  },
+  {
+    name: "Short Strangle",
+    instrument: "NIFTY",
+    legs: [
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM+2", lots: 1, expiry: "current" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM-2", lots: 1, expiry: "current" },
+    ],
+    entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
+    exitConditions: [
+      { id: "1", type: "sl_pct", value: "50" },
+      { id: "2", type: "time", value: "15:15" },
+    ],
+    recurrence: "daily",
+    telegramAlert: true,
+  },
+  {
+    name: "Iron Condor",
+    instrument: "BANKNIFTY",
+    legs: [
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM+1", lots: 1, expiry: "current" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM+3", lots: 1, expiry: "current" },
+      { id: "3", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM-1", lots: 1, expiry: "current" },
+      { id: "4", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "ATM-3", lots: 1, expiry: "current" },
+    ],
+    entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
+    exitConditions: [
+      { id: "1", type: "mtm_loss", value: "5000" },
+      { id: "2", type: "mtm_profit", value: "3000" },
+      { id: "3", type: "time", value: "15:20" },
+    ],
+    recurrence: "daily",
+    telegramAlert: true,
+  },
+  {
+    name: "Calendar Spread",
+    instrument: "NIFTY",
+    legs: [
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "next" },
+    ],
+    entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
+    exitConditions: [
+      { id: "1", type: "target_pct", value: "50" },
+      { id: "2", type: "sl_pct", value: "30" },
+    ],
+    recurrence: "weekly",
+    telegramAlert: true,
+  },
+  {
+    name: "Bull Put Spread",
+    instrument: "NIFTY",
+    legs: [
+      { id: "1", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM-1", lots: 1, expiry: "current" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "ATM-3", lots: 1, expiry: "current" },
+    ],
+    entryConditions: [{ id: "1", type: "price_move", operator: ">", value: "0.3" }],
+    exitConditions: [
+      { id: "1", type: "target_pct", value: "60" },
+      { id: "2", type: "sl_pct", value: "100" },
+    ],
+    recurrence: "daily",
+    telegramAlert: false,
+  },
+  {
+    name: "Expiry Day Straddle",
+    instrument: "SENSEX",
+    legs: [
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+    ],
+    entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
+    exitConditions: [
+      { id: "1", type: "sl_points", value: "150" },
+      { id: "2", type: "time", value: "15:25" },
+    ],
+    recurrence: "weekly",
+    telegramAlert: true,
+  },
+];
+
+function generateId() {
+  return Math.random().toString(36).substring(2, 10);
+}
 
 const Algo = () => {
-  const {
-    schedules,
-    executions,
-    loading,
-    createSchedule,
-    updateSchedule,
-    deleteSchedule,
-    refresh,
-  } = useScheduledTrades();
+  const { schedules, executions, loading, createSchedule, updateSchedule, deleteSchedule, refresh } = useScheduledTrades();
   const { isConnected } = useBroker();
+  const { runBacktest } = useBacktesting();
 
-  const [activeTab, setActiveTab] = useState<AlgoCategory>("schedule");
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("builder");
+  const [strategies, setStrategies] = useState<AlgoStrategy[]>([]);
+  const [editingStrategy, setEditingStrategy] = useState<AlgoStrategy | null>(null);
+  const [showPresets, setShowPresets] = useState(false);
+  const [btRunning, setBtRunning] = useState(false);
 
-  // ── Schedule Form State ──
-  const [form, setForm] = useState({
-    instrument: "NIFTY",
-    strategy_type: "straddle",
-    selection_mode: "atm",
-    premium_target: 100,
-    otm_percent: 2,
-    quantity: 50,
-    stop_loss_percent: 50,
-    schedule_time: "09:20",
-    telegram_alert: true,
-    recurrence: "daily" as RecurrenceType,
-  });
-
-  // ── Rollover Config ──
-  const [rolloverConfig, setRolloverConfig] = useState({
-    instrument: "NIFTY",
-    daysBeforeExpiry: 2,
-    autoRollover: true,
-    targetExpiry: "next" as "next" | "far",
-    maxBasisCost: 0.5,
-  });
-
-  // ── Expiry Day Config ──
-  const [expiryConfig, setExpiryConfig] = useState({
-    instrument: "NIFTY",
-    squareOffTime: "15:00",
-    autoSquareOff: true,
-    shiftToNextExpiry: true,
-    maxLossToHold: 5000,
-  });
-
-  // ── Computed Data ──
   const niftyExpiries = useMemo(() => getUpcomingExpiries(true, 6), []);
-  const currentExpiry = niftyExpiries[0];
-  const daysToCurrentExpiry = currentExpiry ? getDaysToExpiry(currentExpiry.date) : 0;
+  const daysToExpiry = niftyExpiries[0] ? getDaysToExpiry(niftyExpiries[0].date) : 0;
 
-  const stats = useMemo(() => {
-    const active = schedules.filter((s) => s.is_active).length;
-    const todayExecs = executions.filter(
-      (e) => new Date(e.executed_at).toDateString() === new Date().toDateString()
-    );
-    const totalPremium = todayExecs.reduce((s, e) => s + (e.total_premium || 0), 0);
-    const successRate =
-      todayExecs.length > 0
-        ? Math.round(
-            (todayExecs.filter((e) => e.status === "executed").length / todayExecs.length) * 100
-          )
-        : 0;
-    return { active, todayTrades: todayExecs.length, totalPremium, successRate };
-  }, [schedules, executions]);
+  // ── Strategy Builder Helpers ──
+  const createNewStrategy = (): AlgoStrategy => ({
+    id: generateId(),
+    name: "My Strategy",
+    instrument: "NIFTY",
+    legs: [
+      { id: generateId(), segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      { id: generateId(), segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+    ],
+    entryConditions: [{ id: generateId(), type: "time", operator: ">=", value: "09:20" }],
+    exitConditions: [{ id: generateId(), type: "sl_pct", value: "30" }],
+    status: "draft",
+    recurrence: "daily",
+    telegramAlert: true,
+    createdAt: new Date(),
+  });
 
-  const handleCreate = async () => {
-    setSaving(true);
-    await createSchedule({
-      instrument: form.instrument,
-      strategy_type: form.strategy_type,
-      selection_mode: form.selection_mode,
-      premium_target: form.selection_mode === "premium_target" ? form.premium_target : null,
-      otm_percent: form.selection_mode === "otm_percent" ? form.otm_percent : null,
-      quantity: form.quantity,
-      stop_loss_percent: form.stop_loss_percent,
-      schedule_time: form.schedule_time + ":00",
-      is_active: true,
-      telegram_alert: form.telegram_alert,
-    });
-    setSaving(false);
-    setShowForm(false);
+  const loadPreset = (preset: typeof presetStrategies[0]) => {
+    const strat: AlgoStrategy = {
+      ...preset,
+      id: generateId(),
+      status: "draft",
+      createdAt: new Date(),
+      legs: preset.legs.map((l) => ({ ...l, id: generateId() })),
+      entryConditions: preset.entryConditions.map((c) => ({ ...c, id: generateId() })),
+      exitConditions: preset.exitConditions.map((c) => ({ ...c, id: generateId() })),
+    };
+    setEditingStrategy(strat);
+    setShowPresets(false);
+    setActiveTab("builder");
   };
 
-  // ── Shared Select Component ──
-  const SelectField = ({
-    label,
-    value,
-    onChange,
-    options,
-  }: {
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-    options: { value: string; label: string }[];
+  const addLeg = () => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      legs: [
+        ...editingStrategy.legs,
+        { id: generateId(), segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      ],
+    });
+  };
+
+  const removeLeg = (legId: string) => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      legs: editingStrategy.legs.filter((l) => l.id !== legId),
+    });
+  };
+
+  const updateLeg = (legId: string, updates: Partial<StrategyLeg>) => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      legs: editingStrategy.legs.map((l) => (l.id === legId ? { ...l, ...updates } : l)),
+    });
+  };
+
+  const addEntryCondition = () => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      entryConditions: [
+        ...editingStrategy.entryConditions,
+        { id: generateId(), type: "indicator", operator: ">", value: "70", indicator: "RSI (14)" },
+      ],
+    });
+  };
+
+  const removeEntryCondition = (id: string) => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      entryConditions: editingStrategy.entryConditions.filter((c) => c.id !== id),
+    });
+  };
+
+  const updateEntryCondition = (id: string, updates: Partial<EntryCondition>) => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      entryConditions: editingStrategy.entryConditions.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    });
+  };
+
+  const addExitCondition = () => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      exitConditions: [
+        ...editingStrategy.exitConditions,
+        { id: generateId(), type: "target_pct", value: "50" },
+      ],
+    });
+  };
+
+  const removeExitCondition = (id: string) => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      exitConditions: editingStrategy.exitConditions.filter((c) => c.id !== id),
+    });
+  };
+
+  const updateExitCondition = (id: string, updates: Partial<ExitCondition>) => {
+    if (!editingStrategy) return;
+    setEditingStrategy({
+      ...editingStrategy,
+      exitConditions: editingStrategy.exitConditions.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    });
+  };
+
+  const saveStrategy = () => {
+    if (!editingStrategy) return;
+    setStrategies((prev) => {
+      const idx = prev.findIndex((s) => s.id === editingStrategy.id);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = editingStrategy;
+        return updated;
+      }
+      return [...prev, editingStrategy];
+    });
+    setEditingStrategy(null);
+  };
+
+  const handleBacktest = () => {
+    if (!editingStrategy) return;
+    setBtRunning(true);
+    setTimeout(() => {
+      const strategyMap: Record<string, string> = {
+        "Short Straddle": "straddle",
+        "Short Strangle": "strangle",
+        "Iron Condor": "iron_condor",
+        "Calendar Spread": "calendar_spread",
+      };
+      const stratType = strategyMap[editingStrategy.name] || "straddle";
+      const result = runBacktest({
+        instrument: editingStrategy.instrument,
+        strategy: stratType,
+        days: 90,
+        quantity: (editingStrategy.legs[0]?.lots || 1) * (lotSizes[editingStrategy.instrument] || 50),
+        stopLossPct: parseFloat(editingStrategy.exitConditions.find((c) => c.type === "sl_pct")?.value || "30"),
+      });
+      setEditingStrategy({ ...editingStrategy, backtestResult: result, status: "backtested" });
+      setBtRunning(false);
+    }, 1000);
+  };
+
+  const deployStrategy = (stratId: string) => {
+    setStrategies((prev) =>
+      prev.map((s) => (s.id === stratId ? { ...s, status: "deployed" as const } : s))
+    );
+  };
+
+  const pauseStrategy = (stratId: string) => {
+    setStrategies((prev) =>
+      prev.map((s) => (s.id === stratId ? { ...s, status: s.status === "deployed" ? "paused" as const : "deployed" as const } : s))
+    );
+  };
+
+  // ── Shared Components ──
+  const SelectInput = ({ label, value, onChange, options, className }: {
+    label?: string; value: string; onChange: (v: string) => void;
+    options: { value: string; label: string }[]; className?: string;
   }) => (
-    <div>
-      <label className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</label>
+    <div className={className}>
+      {label && <label className="text-[9px] text-muted-foreground uppercase tracking-wider block mb-1">{label}</label>}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary"
+        className="w-full bg-muted text-foreground text-xs px-2.5 py-1.5 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary"
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
 
-  const NumberField = ({
-    label,
-    value,
-    onChange,
-    step,
-    suffix,
-  }: {
-    label: string;
-    value: number;
-    onChange: (v: number) => void;
-    step?: number;
-    suffix?: string;
-  }) => (
-    <div>
-      <label className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</label>
-      <div className="relative mt-1">
-        <input
-          type="number"
-          step={step || 1}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-mono"
-        />
-        {suffix && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-            {suffix}
-          </span>
-        )}
-      </div>
-    </div>
-  );
+  const statusColors: Record<string, string> = {
+    draft: "bg-muted text-muted-foreground",
+    backtested: "bg-primary/10 text-primary",
+    deployed: "bg-success/10 text-profit",
+    paused: "bg-warning/10 text-warning",
+  };
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Algo Trading</h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Automated execution • Scheduling • Rollover • Expiry management
+              No-code strategy builder • Backtest • Deploy • Monitor
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={refresh} className="gap-1.5">
+            <Badge variant="outline" className="gap-1 text-[10px]">
+              <Timer className="w-3 h-3" />
+              Expiry: {daysToExpiry}d
+            </Badge>
+            <Button size="sm" variant="outline" onClick={refresh} className="gap-1.5 h-8">
               <RefreshCw className="w-3.5 h-3.5" />
-              Refresh
             </Button>
-            <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingStrategy(createNewStrategy());
+                setActiveTab("builder");
+              }}
+              className="gap-1.5 h-8"
+            >
               <Plus className="w-3.5 h-3.5" />
-              New Algo
+              New Strategy
             </Button>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Active Algos", value: String(stats.active), icon: Bot, color: "text-primary" },
-            {
-              label: "Today's Premium",
-              value: `₹${stats.totalPremium.toLocaleString("en-IN")}`,
-              icon: TrendingUp,
-              color: "text-profit",
-            },
-            { label: "Trades Today", value: String(stats.todayTrades), icon: Clock, color: "text-muted-foreground" },
-            {
-              label: "Expiry In",
-              value: `${daysToCurrentExpiry}d`,
-              icon: Timer,
-              color: daysToCurrentExpiry <= 1 ? "text-loss" : "text-primary",
-            },
-          ].map((s) => (
-            <Card key={s.label}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center">
-                  <s.icon className={cn("w-4 h-4", s.color)} />
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
-                  <p className="text-lg font-bold font-mono text-foreground">{s.value}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
         {/* Main Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AlgoCategory)}>
-          <TabsList className="grid grid-cols-4 w-full max-w-xl">
-            <TabsTrigger value="schedule" className="gap-1.5 text-xs">
-              <Clock className="w-3.5 h-3.5" /> Schedules
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid grid-cols-4 w-full max-w-lg">
+            <TabsTrigger value="builder" className="gap-1 text-xs">
+              <Layers className="w-3.5 h-3.5" /> Builder
             </TabsTrigger>
-            <TabsTrigger value="recurring" className="gap-1.5 text-xs">
-              <Repeat className="w-3.5 h-3.5" /> Recurring
+            <TabsTrigger value="strategies" className="gap-1 text-xs">
+              <BookOpen className="w-3.5 h-3.5" /> My Strategies
             </TabsTrigger>
-            <TabsTrigger value="rollover" className="gap-1.5 text-xs">
-              <ArrowRightLeft className="w-3.5 h-3.5" /> Rollover
+            <TabsTrigger value="presets" className="gap-1 text-xs">
+              <Copy className="w-3.5 h-3.5" /> Templates
             </TabsTrigger>
-            <TabsTrigger value="expiry" className="gap-1.5 text-xs">
-              <CalendarDays className="w-3.5 h-3.5" /> Expiry Day
+            <TabsTrigger value="deployed" className="gap-1 text-xs">
+              <Rocket className="w-3.5 h-3.5" /> Live
             </TabsTrigger>
           </TabsList>
 
-          {/* ═══════════ SCHEDULES TAB ═══════════ */}
-          <TabsContent value="schedule" className="space-y-4 mt-4">
-            {/* Create Form */}
-            {showForm && (
-              <Card className="animate-slide-up">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Plus className="w-4 h-4 text-primary" />
-                    New Scheduled Trade
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <SelectField
-                      label="Instrument"
-                      value={form.instrument}
-                      onChange={(v) =>
-                        setForm({ ...form, instrument: v, quantity: lotSize[v] || 50 })
-                      }
-                      options={instruments.map((i) => ({ value: i, label: i }))}
-                    />
-                    <SelectField
-                      label="Strategy"
-                      value={form.strategy_type}
-                      onChange={(v) => setForm({ ...form, strategy_type: v })}
-                      options={[
-                        { value: "straddle", label: "Short Straddle" },
-                        { value: "strangle", label: "Short Strangle" },
-                        { value: "iron_condor", label: "Iron Condor" },
-                        { value: "calendar_spread", label: "Calendar Spread" },
-                      ]}
-                    />
-                    <div>
-                      <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                        Execute At
-                      </label>
-                      <input
-                        type="time"
-                        value={form.schedule_time}
-                        onChange={(e) => setForm({ ...form, schedule_time: e.target.value })}
-                        className="mt-1 w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-mono"
+          {/* ═══════════ BUILDER TAB ═══════════ */}
+          <TabsContent value="builder" className="space-y-4 mt-4">
+            {editingStrategy ? (
+              <>
+                {/* Strategy Header */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[200px]">
+                        <label className="text-[9px] text-muted-foreground uppercase tracking-wider">Strategy Name</label>
+                        <input
+                          value={editingStrategy.name}
+                          onChange={(e) => setEditingStrategy({ ...editingStrategy, name: e.target.value })}
+                          className="w-full bg-muted text-foreground text-sm px-3 py-1.5 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-medium mt-1"
+                        />
+                      </div>
+                      <SelectInput
+                        label="Instrument"
+                        value={editingStrategy.instrument}
+                        onChange={(v) => setEditingStrategy({ ...editingStrategy, instrument: v })}
+                        options={instruments.map((i) => ({ value: i, label: i }))}
+                        className="w-32"
                       />
-                    </div>
-                    <NumberField
-                      label={`Lots (${form.quantity} qty)`}
-                      value={form.quantity}
-                      onChange={(v) => setForm({ ...form, quantity: v })}
-                    />
-                  </div>
-
-                  {/* Strike Selection */}
-                  <div>
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2 block">
-                      Strike Selection
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { mode: "atm", icon: Target, title: "ATM", desc: "At-the-money" },
-                        {
-                          mode: "premium_target",
-                          icon: TrendingDown,
-                          title: "Premium",
-                          desc: "₹/lot target",
-                        },
-                        { mode: "otm_percent", icon: Percent, title: "OTM %", desc: "% from ATM" },
-                      ].map((opt) => (
+                      <SelectInput
+                        label="Recurrence"
+                        value={editingStrategy.recurrence}
+                        onChange={(v) => setEditingStrategy({ ...editingStrategy, recurrence: v as any })}
+                        options={[
+                          { value: "once", label: "One-time" },
+                          { value: "daily", label: "Daily" },
+                          { value: "weekly", label: "Weekly" },
+                          { value: "monthly", label: "Monthly" },
+                        ]}
+                        className="w-28"
+                      />
+                      <div className="flex items-end gap-1.5 pt-3">
                         <button
-                          key={opt.mode}
-                          onClick={() => setForm({ ...form, selection_mode: opt.mode })}
+                          onClick={() => setEditingStrategy({ ...editingStrategy, telegramAlert: !editingStrategy.telegramAlert })}
                           className={cn(
-                            "flex items-center gap-2 p-3 rounded-lg border-2 transition-all text-left",
-                            form.selection_mode === opt.mode
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/50"
+                            "p-1.5 rounded-md border transition-colors",
+                            editingStrategy.telegramAlert ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                          )}
+                          title="Telegram Alerts"
+                        >
+                          {editingStrategy.telegramAlert ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Legs Builder */}
+                <Card>
+                  <CardHeader className="pb-2 px-4 pt-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-primary" />
+                        Strategy Legs
+                        <Badge variant="secondary" className="text-[9px] ml-1">{editingStrategy.legs.length} legs</Badge>
+                      </CardTitle>
+                      <Button size="sm" variant="outline" onClick={addLeg} className="h-7 text-xs gap-1">
+                        <PlusCircle className="w-3 h-3" /> Add Leg
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="space-y-2">
+                      {/* Column Headers */}
+                      <div className="grid grid-cols-[40px_70px_60px_55px_100px_65px_70px_32px] gap-2 text-[9px] text-muted-foreground uppercase tracking-wider px-1">
+                        <span>Leg</span>
+                        <span>Segment</span>
+                        <span>B/S</span>
+                        <span>Type</span>
+                        <span>Strike</span>
+                        <span>Lots</span>
+                        <span>Expiry</span>
+                        <span></span>
+                      </div>
+
+                      {editingStrategy.legs.map((leg, i) => (
+                        <div
+                          key={leg.id}
+                          className={cn(
+                            "grid grid-cols-[40px_70px_60px_55px_100px_65px_70px_32px] gap-2 items-center p-2 rounded-lg border transition-colors",
+                            leg.side === "BUY" ? "border-success/20 bg-success/5" : "border-destructive/20 bg-destructive/5"
                           )}
                         >
-                          <opt.icon
-                            className={cn(
-                              "w-4 h-4",
-                              form.selection_mode === opt.mode
-                                ? "text-primary"
-                                : "text-muted-foreground"
-                            )}
-                          />
-                          <div>
-                            <p className="text-xs font-medium text-foreground">{opt.title}</p>
-                            <p className="text-[10px] text-muted-foreground">{opt.desc}</p>
+                          <div className="flex items-center gap-1">
+                            <GripVertical className="w-3 h-3 text-muted-foreground/40" />
+                            <span className="text-xs font-mono text-muted-foreground">L{i + 1}</span>
                           </div>
-                        </button>
+
+                          <select
+                            value={leg.segment}
+                            onChange={(e) => updateLeg(leg.id, { segment: e.target.value as any })}
+                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                          >
+                            <option value="OPT">Options</option>
+                            <option value="FUT">Futures</option>
+                          </select>
+
+                          <button
+                            onClick={() => updateLeg(leg.id, { side: leg.side === "BUY" ? "SELL" : "BUY" })}
+                            className={cn(
+                              "text-[11px] font-bold py-1 rounded border text-center",
+                              leg.side === "BUY"
+                                ? "bg-success/20 text-profit border-success/30"
+                                : "bg-destructive/20 text-loss border-destructive/30"
+                            )}
+                          >
+                            {leg.side}
+                          </button>
+
+                          {leg.segment === "OPT" ? (
+                            <select
+                              value={leg.optionType}
+                              onChange={(e) => updateLeg(leg.id, { optionType: e.target.value as any })}
+                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                            >
+                              <option value="CE">CE</option>
+                              <option value="PE">PE</option>
+                            </select>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground text-center">FUT</span>
+                          )}
+
+                          <select
+                            value={leg.strikeSelection}
+                            onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value as any })}
+                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                          >
+                            {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+
+                          <input
+                            type="number"
+                            value={leg.lots}
+                            onChange={(e) => updateLeg(leg.id, { lots: Math.max(1, Number(e.target.value)) })}
+                            min={1}
+                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono w-full"
+                          />
+
+                          <select
+                            value={leg.expiry}
+                            onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
+                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                          >
+                            <option value="current">Current</option>
+                            <option value="next">Next</option>
+                            <option value="far">Far</option>
+                          </select>
+
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="w-6 h-6"
+                            onClick={() => removeLeg(leg.id)}
+                            disabled={editingStrategy.legs.length <= 1}
+                          >
+                            <X className="w-3 h-3 text-muted-foreground" />
+                          </Button>
+                        </div>
                       ))}
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {form.selection_mode === "premium_target" && (
-                      <NumberField
-                        label="Target Premium (₹/lot)"
-                        value={form.premium_target}
-                        onChange={(v) => setForm({ ...form, premium_target: v })}
-                      />
-                    )}
-                    {form.selection_mode === "otm_percent" && (
-                      <NumberField
-                        label="OTM Distance (%)"
-                        value={form.otm_percent}
-                        onChange={(v) => setForm({ ...form, otm_percent: v })}
-                        step={0.5}
-                      />
-                    )}
-                    <NumberField
-                      label="Stop Loss (% of premium)"
-                      value={form.stop_loss_percent}
-                      onChange={(v) => setForm({ ...form, stop_loss_percent: v })}
-                    />
-                    <SelectField
-                      label="Recurrence"
-                      value={form.recurrence}
-                      onChange={(v) => setForm({ ...form, recurrence: v as RecurrenceType })}
-                      options={[
-                        { value: "once", label: "One-time" },
-                        { value: "daily", label: "Daily" },
-                        { value: "weekly", label: "Weekly (Thu)" },
-                        { value: "monthly", label: "Monthly Expiry" },
-                      ]}
-                    />
-                    <div className="flex items-end">
-                      <button
-                        onClick={() =>
-                          setForm({ ...form, telegram_alert: !form.telegram_alert })
-                        }
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-md border transition-colors w-full h-[34px]",
-                          form.telegram_alert
-                            ? "border-primary bg-primary/5 text-primary"
-                            : "border-border text-muted-foreground"
-                        )}
-                      >
-                        {form.telegram_alert ? (
-                          <Bell className="w-4 h-4" />
-                        ) : (
-                          <BellOff className="w-4 h-4" />
-                        )}
-                        <span className="text-xs font-medium">
-                          {form.telegram_alert ? "Alerts ON" : "Alerts OFF"}
-                        </span>
-                      </button>
+                    {/* Lot Size Info */}
+                    <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
+                      <span>Lot size: <span className="font-mono text-foreground">{lotSizes[editingStrategy.instrument] || 50}</span></span>
+                      <span>Total qty: <span className="font-mono text-foreground">
+                        {editingStrategy.legs.reduce((s, l) => s + l.lots, 0) * (lotSizes[editingStrategy.instrument] || 50)}
+                      </span></span>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <div className="flex gap-2 pt-2">
-                    <Button onClick={handleCreate} disabled={saving} size="sm" className="gap-1.5">
-                      {saving ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Clock className="w-3.5 h-3.5" />
-                      )}
-                      {saving ? "Saving..." : "Create Schedule"}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setShowForm(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                {/* Entry Conditions */}
+                <Card>
+                  <CardHeader className="pb-2 px-4 pt-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <ChevronRight className="w-4 h-4 text-profit" />
+                        Entry Conditions
+                      </CardTitle>
+                      <Button size="sm" variant="outline" onClick={addEntryCondition} className="h-7 text-xs gap-1">
+                        <PlusCircle className="w-3 h-3" /> Add
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-2">
+                    {editingStrategy.entryConditions.map((cond, i) => (
+                      <div key={cond.id} className="flex items-center gap-2 p-2 rounded-lg border border-border bg-secondary/20">
+                        {i > 0 && <Badge variant="secondary" className="text-[8px] shrink-0">AND</Badge>}
 
-            {/* Schedules List */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-primary" />
-                    Active Schedules
-                  </CardTitle>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {schedules.length} configured
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                  </div>
-                ) : schedules.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Bot className="w-8 h-8 mx-auto text-muted-foreground/30 mb-2" />
-                    <p className="text-xs text-muted-foreground">No scheduled trades. Create one above.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {schedules.map((s) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 hover:bg-secondary/40 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-card flex items-center justify-center border border-border">
-                            <Clock className="w-4 h-4 text-primary" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-foreground">
-                                {s.instrument}{" "}
-                                {s.strategy_type === "straddle" ? "Straddle" : "Strangle"}
-                              </span>
-                              <Badge
-                                variant={s.is_active ? "default" : "secondary"}
-                                className="text-[9px] px-1.5 py-0"
-                              >
-                                {s.is_active ? "ACTIVE" : "PAUSED"}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground font-mono">
-                              <span>{s.schedule_time.slice(0, 5)} IST</span>
-                              <span>•</span>
-                              <span>
-                                {s.selection_mode === "atm"
-                                  ? "ATM"
-                                  : s.selection_mode === "premium_target"
-                                  ? `₹${s.premium_target}/lot`
-                                  : `${s.otm_percent}% OTM`}
-                              </span>
-                              <span>•</span>
-                              <span>SL {s.stop_loss_percent}%</span>
-                              <span>•</span>
-                              <span>Qty {s.quantity}</span>
-                              {s.telegram_alert && (
-                                <>
-                                  <span>•</span>
-                                  <Bell className="w-2.5 h-2.5 text-primary" />
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="w-7 h-7"
-                            onClick={() =>
-                              updateSchedule(s.id, { is_active: !s.is_active })
-                            }
-                          >
-                            {s.is_active ? (
-                              <Pause className="w-3.5 h-3.5 text-warning" />
-                            ) : (
-                              <Play className="w-3.5 h-3.5 text-profit" />
-                            )}
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="w-7 h-7"
-                            onClick={() => deleteSchedule(s.id)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
-                          </Button>
-                        </div>
+                        <SelectInput
+                          value={cond.type}
+                          onChange={(v) => updateEntryCondition(cond.id, { type: v as any })}
+                          options={[
+                            { value: "time", label: "Time" },
+                            { value: "premium", label: "Premium ₹" },
+                            { value: "indicator", label: "Indicator" },
+                            { value: "price_move", label: "Price Move %" },
+                            { value: "iv", label: "India VIX" },
+                            { value: "oi_change", label: "OI Change" },
+                          ]}
+                          className="w-28"
+                        />
+
+                        {cond.type === "indicator" && (
+                          <SelectInput
+                            value={cond.indicator || "RSI (14)"}
+                            onChange={(v) => updateEntryCondition(cond.id, { indicator: v })}
+                            options={indicatorOptions.map((i) => ({ value: i, label: i }))}
+                            className="w-36"
+                          />
+                        )}
+
+                        <SelectInput
+                          value={cond.operator}
+                          onChange={(v) => updateEntryCondition(cond.id, { operator: v as any })}
+                          options={[
+                            { value: ">", label: ">" },
+                            { value: "<", label: "<" },
+                            { value: ">=", label: ">=" },
+                            { value: "<=", label: "<=" },
+                            { value: "=", label: "=" },
+                          ]}
+                          className="w-16"
+                        />
+
+                        <input
+                          type={cond.type === "time" ? "time" : "text"}
+                          value={cond.value}
+                          onChange={(e) => updateEntryCondition(cond.id, { value: e.target.value })}
+                          className="w-24 bg-muted text-foreground text-xs px-2.5 py-1.5 rounded-md border border-border/50 font-mono"
+                        />
+
+                        <Button size="icon" variant="ghost" className="w-6 h-6 shrink-0" onClick={() => removeEntryCondition(cond.id)}>
+                          <X className="w-3 h-3 text-muted-foreground" />
+                        </Button>
                       </div>
                     ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            {/* Recent Executions */}
-            {executions.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-profit" />
-                    Recent Executions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-border/50">
-                          {["Time", "Instrument", "Strategy", "Premium", "SL", "Status"].map(
-                            (h) => (
-                              <th
-                                key={h}
-                                className="text-left px-3 py-2 text-muted-foreground font-medium uppercase tracking-wider text-[10px]"
-                              >
-                                {h}
-                              </th>
-                            )
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {executions.slice(0, 10).map((ex) => (
-                          <tr key={ex.id} className="data-row">
-                            <td className="px-3 py-2 font-mono text-muted-foreground">
-                              {new Date(ex.executed_at).toLocaleString("en-IN", {
-                                day: "2-digit",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-foreground">
-                              {ex.instrument}
-                            </td>
-                            <td className="px-3 py-2 text-foreground capitalize">
-                              {ex.strategy_type}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-profit">
-                              {ex.total_premium
-                                ? `₹${ex.total_premium.toLocaleString("en-IN")}`
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-loss">
-                              {ex.stop_loss_price
-                                ? `₹${ex.stop_loss_price.toLocaleString("en-IN")}`
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Badge
-                                variant={
-                                  ex.status === "executed"
-                                    ? "default"
-                                    : ex.status === "failed"
-                                    ? "destructive"
-                                    : "secondary"
-                                }
-                                className="text-[9px]"
-                              >
-                                {ex.status.toUpperCase()}
-                              </Badge>
-                            </td>
-                          </tr>
+                {/* Exit Conditions */}
+                <Card>
+                  <CardHeader className="pb-2 px-4 pt-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <ChevronRight className="w-4 h-4 text-loss" />
+                        Exit / Risk Management
+                      </CardTitle>
+                      <Button size="sm" variant="outline" onClick={addExitCondition} className="h-7 text-xs gap-1">
+                        <PlusCircle className="w-3 h-3" /> Add
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-2">
+                    {editingStrategy.exitConditions.map((cond, i) => (
+                      <div key={cond.id} className="flex items-center gap-2 p-2 rounded-lg border border-border bg-secondary/20">
+                        {i > 0 && <Badge variant="secondary" className="text-[8px] shrink-0">OR</Badge>}
+
+                        <SelectInput
+                          value={cond.type}
+                          onChange={(v) => updateExitCondition(cond.id, { type: v as any })}
+                          options={[
+                            { value: "sl_pct", label: "SL % (per leg)" },
+                            { value: "target_pct", label: "Target %" },
+                            { value: "sl_points", label: "SL Points" },
+                            { value: "target_points", label: "Target Points" },
+                            { value: "trailing_sl", label: "Trailing SL %" },
+                            { value: "mtm_loss", label: "MTM Loss ₹" },
+                            { value: "mtm_profit", label: "MTM Profit ₹" },
+                            { value: "time", label: "Exit Time" },
+                          ]}
+                          className="w-32"
+                        />
+
+                        <input
+                          type={cond.type === "time" ? "time" : "text"}
+                          value={cond.value}
+                          onChange={(e) => updateExitCondition(cond.id, { value: e.target.value })}
+                          className="w-24 bg-muted text-foreground text-xs px-2.5 py-1.5 rounded-md border border-border/50 font-mono"
+                        />
+
+                        <Button size="icon" variant="ghost" className="w-6 h-6 shrink-0" onClick={() => removeExitCondition(cond.id)}>
+                          <X className="w-3 h-3 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Button onClick={handleBacktest} disabled={btRunning} variant="outline" className="gap-1.5">
+                    {btRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <History className="w-4 h-4" />}
+                    {btRunning ? "Running Backtest..." : "Backtest"}
+                  </Button>
+                  <Button onClick={saveStrategy} className="gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Save Strategy
+                  </Button>
+                  <Button variant="secondary" onClick={() => setEditingStrategy(null)} className="gap-1.5">
+                    <X className="w-4 h-4" /> Cancel
+                  </Button>
+                </div>
+
+                {/* Backtest Results */}
+                {editingStrategy.backtestResult && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4 text-primary" />
+                        Backtest Results — {editingStrategy.name}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {[
+                          { label: "Total P&L", value: `${editingStrategy.backtestResult.totalPnl >= 0 ? "+" : ""}₹${editingStrategy.backtestResult.totalPnl.toLocaleString("en-IN")}`, color: editingStrategy.backtestResult.totalPnl >= 0 ? "text-profit" : "text-loss" },
+                          { label: "Win Rate", value: `${editingStrategy.backtestResult.winRate}%`, color: editingStrategy.backtestResult.winRate >= 50 ? "text-profit" : "text-loss" },
+                          { label: "Sharpe", value: editingStrategy.backtestResult.sharpeRatio.toFixed(2), color: "text-primary" },
+                          { label: "Max DD", value: `₹${editingStrategy.backtestResult.maxDrawdown.toLocaleString("en-IN")}`, color: "text-loss" },
+                        ].map((s) => (
+                          <div key={s.label} className="p-3 rounded-lg border border-border bg-secondary/20">
+                            <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
+                            <p className={cn("text-lg font-bold font-mono", s.color)}>{s.value}</p>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+                      </div>
+
+                      <div className="h-52">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={editingStrategy.backtestResult.results}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                            <XAxis dataKey="date" tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => v.slice(5)} interval="preserveStartEnd" />
+                            <YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                            <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "11px" }} />
+                            <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                            <Line type="monotone" dataKey="cumulativePnl" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <Button
+                        onClick={() => {
+                          saveStrategy();
+                          if (editingStrategy) deployStrategy(editingStrategy.id);
+                        }}
+                        className="gap-1.5"
+                      >
+                        <Rocket className="w-4 h-4" /> Deploy Live
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-16">
+                <Bot className="w-12 h-12 mx-auto text-muted-foreground/20 mb-4" />
+                <h3 className="text-sm font-semibold text-foreground mb-1">No strategy selected</h3>
+                <p className="text-xs text-muted-foreground mb-4">Create a new strategy or load a template to get started.</p>
+                <div className="flex items-center justify-center gap-3">
+                  <Button onClick={() => setEditingStrategy(createNewStrategy())} className="gap-1.5">
+                    <Plus className="w-4 h-4" /> New Strategy
+                  </Button>
+                  <Button variant="outline" onClick={() => setActiveTab("presets")} className="gap-1.5">
+                    <Copy className="w-4 h-4" /> Load Template
+                  </Button>
+                </div>
+              </div>
             )}
           </TabsContent>
 
-          {/* ═══════════ RECURRING STRATEGIES TAB ═══════════ */}
-          <TabsContent value="recurring" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Repeat className="w-4 h-4 text-primary" />
-                  Recurring Strategies
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Configure strategies that auto-execute on a schedule — weekly on expiry days or
-                  monthly.
-                </p>
-
-                {/* Preset strategies */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {[
-                    {
-                      name: "Weekly Straddle Seller",
-                      desc: "Sell ATM straddle every Thursday at 9:20 AM. Auto-adjusts to current week expiry.",
-                      frequency: "Weekly",
-                      instrument: "NIFTY",
-                      risk: "Medium",
-                    },
-                    {
-                      name: "Monthly Iron Condor",
-                      desc: "Deploy iron condor 15 days before monthly expiry. Auto-manages legs on expiry week.",
-                      frequency: "Monthly",
-                      instrument: "BANKNIFTY",
-                      risk: "Low",
-                    },
-                    {
-                      name: "Weekly Strangle",
-                      desc: "Sell 2% OTM strangle on Wednesday, exit on Thursday. Premium decay strategy.",
-                      frequency: "Weekly",
-                      instrument: "NIFTY",
-                      risk: "High",
-                    },
-                    {
-                      name: "Expiry Day Scalper",
-                      desc: "ATM straddle on expiry morning, exit at 50% profit or 2:30 PM whichever first.",
-                      frequency: "Weekly",
-                      instrument: "SENSEX",
-                      risk: "High",
-                    },
-                  ].map((preset) => (
-                    <div
-                      key={preset.name}
-                      className="p-4 rounded-lg border border-border bg-secondary/20 hover:bg-secondary/40 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
+          {/* ═══════════ MY STRATEGIES TAB ═══════════ */}
+          <TabsContent value="strategies" className="space-y-4 mt-4">
+            {strategies.length === 0 ? (
+              <div className="text-center py-16">
+                <BookOpen className="w-10 h-10 mx-auto text-muted-foreground/20 mb-3" />
+                <p className="text-xs text-muted-foreground">No strategies saved yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {strategies.map((strat) => (
+                  <Card key={strat.id} className="hover:border-primary/30 transition-colors">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h4 className="text-sm font-semibold text-foreground">{preset.name}</h4>
-                          <p className="text-[11px] text-muted-foreground mt-1">{preset.desc}</p>
+                          <h3 className="text-sm font-semibold text-foreground">{strat.name}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-[9px]">{strat.instrument}</Badge>
+                            <Badge className={cn("text-[9px]", statusColors[strat.status])}>{strat.status}</Badge>
+                            <span className="text-[10px] text-muted-foreground">{strat.legs.length} legs</span>
+                          </div>
                         </div>
-                        <Badge
-                          variant={
-                            preset.risk === "Low"
-                              ? "default"
-                              : preset.risk === "Medium"
-                              ? "secondary"
-                              : "destructive"
-                          }
-                          className="text-[9px] shrink-0"
+                      </div>
+
+                      {/* Legs Summary */}
+                      <div className="space-y-1 mb-3">
+                        {strat.legs.map((l, i) => (
+                          <div key={l.id} className="flex items-center gap-2 text-[10px]">
+                            <span className={cn("font-bold", l.side === "BUY" ? "text-profit" : "text-loss")}>{l.side}</span>
+                            <span className="text-foreground">{l.lots}L</span>
+                            <span className="text-muted-foreground">{l.strikeSelection} {l.optionType}</span>
+                            <span className="text-muted-foreground capitalize">{l.expiry}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Backtest Summary */}
+                      {strat.backtestResult && (
+                        <div className="flex items-center gap-3 text-[10px] mb-3 p-2 rounded bg-secondary/30 border border-border/50">
+                          <span className={cn("font-mono font-bold", strat.backtestResult.totalPnl >= 0 ? "text-profit" : "text-loss")}>
+                            P&L: {strat.backtestResult.totalPnl >= 0 ? "+" : ""}₹{strat.backtestResult.totalPnl.toLocaleString("en-IN")}
+                          </span>
+                          <span className="text-muted-foreground">WR: {strat.backtestResult.winRate}%</span>
+                          <span className="text-muted-foreground">DD: ₹{strat.backtestResult.maxDrawdown.toLocaleString("en-IN")}</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs h-7 gap-1"
+                          onClick={() => {
+                            setEditingStrategy(strat);
+                            setActiveTab("builder");
+                          }}
                         >
-                          {preset.risk}
+                          <Settings2 className="w-3 h-3" /> Edit
+                        </Button>
+                        {strat.status === "backtested" && (
+                          <Button size="sm" className="text-xs h-7 gap-1" onClick={() => deployStrategy(strat.id)}>
+                            <Rocket className="w-3 h-3" /> Deploy
+                          </Button>
+                        )}
+                        {(strat.status === "deployed" || strat.status === "paused") && (
+                          <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => pauseStrategy(strat.id)}>
+                            {strat.status === "deployed" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                            {strat.status === "deployed" ? "Pause" : "Resume"}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs h-7"
+                          onClick={() => setStrategies((p) => p.filter((s) => s.id !== strat.id))}
+                        >
+                          <Trash2 className="w-3 h-3 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ═══════════ TEMPLATES TAB ═══════════ */}
+          <TabsContent value="presets" className="space-y-4 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {presetStrategies.map((preset, i) => (
+                <Card key={i} className="hover:border-primary/30 transition-colors cursor-pointer group" onClick={() => loadPreset(preset)}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <h3 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{preset.name}</h3>
+                      <Badge variant="outline" className="text-[9px]">{preset.instrument}</Badge>
+                    </div>
+
+                    <div className="space-y-1 mb-3">
+                      {preset.legs.map((l, j) => (
+                        <div key={j} className="flex items-center gap-1.5 text-[10px]">
+                          <span className={cn("font-bold w-8", l.side === "BUY" ? "text-profit" : "text-loss")}>{l.side}</span>
+                          <span className="text-muted-foreground">{l.strikeSelection} {l.optionType}</span>
+                          <span className="text-muted-foreground capitalize ml-auto">{l.expiry}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                      <span>{preset.entryConditions.length} entry rules</span>
+                      <span>•</span>
+                      <span>{preset.exitConditions.length} exit rules</span>
+                      <span>•</span>
+                      <span className="capitalize">{preset.recurrence}</span>
+                    </div>
+
+                    <Button size="sm" variant="outline" className="w-full mt-3 h-7 text-xs gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Copy className="w-3 h-3" /> Use Template
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* ═══════════ LIVE/DEPLOYED TAB ═══════════ */}
+          <TabsContent value="deployed" className="space-y-4 mt-4">
+            {strategies.filter((s) => s.status === "deployed" || s.status === "paused").length === 0 ? (
+              <div className="text-center py-16">
+                <Rocket className="w-10 h-10 mx-auto text-muted-foreground/20 mb-3" />
+                <p className="text-xs text-muted-foreground">No strategies deployed. Build & backtest a strategy first.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {strategies
+                  .filter((s) => s.status === "deployed" || s.status === "paused")
+                  .map((strat) => (
+                    <Card key={strat.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-10 h-10 rounded-lg flex items-center justify-center",
+                              strat.status === "deployed" ? "bg-success/10" : "bg-warning/10"
+                            )}>
+                              <Bot className={cn("w-5 h-5", strat.status === "deployed" ? "text-profit" : "text-warning")} />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-semibold text-foreground">{strat.name}</h3>
+                                <Badge variant="outline" className="text-[9px]">{strat.instrument}</Badge>
+                                <div className={cn("w-2 h-2 rounded-full", strat.status === "deployed" ? "bg-profit animate-pulse" : "bg-warning")} />
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                                <span>{strat.legs.length} legs</span>
+                                <span>•</span>
+                                <span className="capitalize">{strat.recurrence}</span>
+                                <span>•</span>
+                                <span>{strat.entryConditions.length} entry / {strat.exitConditions.length} exit rules</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {strat.backtestResult && (
+                              <span className={cn("text-sm font-mono font-bold mr-2", strat.backtestResult.totalPnl >= 0 ? "text-profit" : "text-loss")}>
+                                {strat.backtestResult.totalPnl >= 0 ? "+" : ""}₹{strat.backtestResult.totalPnl.toLocaleString("en-IN")}
+                              </span>
+                            )}
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => pauseStrategy(strat.id)}>
+                              {strat.status === "deployed" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                              {strat.status === "deployed" ? "Pause" : "Resume"}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+              </div>
+            )}
+
+            {/* Scheduled trades from DB */}
+            {schedules.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    Scheduled Trades (Legacy)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {schedules.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/20">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-primary" />
+                        <div>
+                          <span className="text-xs font-medium text-foreground">{s.instrument} {s.strategy_type}</span>
+                          <span className="text-[10px] text-muted-foreground ml-2">{s.schedule_time.slice(0, 5)} IST</span>
+                        </div>
+                        <Badge variant={s.is_active ? "default" : "secondary"} className="text-[8px]">
+                          {s.is_active ? "ACTIVE" : "PAUSED"}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3 mt-3">
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {preset.instrument}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">•</span>
-                        <span className="text-[10px] text-primary font-medium">
-                          {preset.frequency}
-                        </span>
-                        <div className="flex-1" />
-                        <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
-                          <Play className="w-3 h-3" />
-                          Deploy
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => updateSchedule(s.id, { is_active: !s.is_active })}>
+                          {s.is_active ? <Pause className="w-3 h-3 text-warning" /> : <Play className="w-3 h-3 text-profit" />}
+                        </Button>
+                        <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => deleteSchedule(s.id)}>
+                          <Trash2 className="w-3 h-3 text-muted-foreground" />
                         </Button>
                       </div>
                     </div>
                   ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Expiry Calendar */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4 text-primary" />
-                  Upcoming Expiries
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                  {niftyExpiries.map((exp) => (
-                    <div
-                      key={exp.fullLabel}
-                      className={cn(
-                        "p-3 rounded-lg border text-center transition-colors",
-                        exp.isCurrent
-                          ? "border-primary bg-primary/5"
-                          : exp.isNext
-                          ? "border-accent/50 bg-accent/5"
-                          : "border-border bg-secondary/20"
-                      )}
-                    >
-                      <p className="text-xs font-mono font-semibold text-foreground">
-                        {exp.label}
-                      </p>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">
-                        {getDaysToExpiry(exp.date)}d left
-                      </p>
-                      <Badge
-                        variant={exp.isMonthly ? "default" : "secondary"}
-                        className="text-[8px] mt-1"
-                      >
-                        {exp.isMonthly ? "Monthly" : "Weekly"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ═══════════ ROLLOVER TAB ═══════════ */}
-          <TabsContent value="rollover" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <ArrowRightLeft className="w-4 h-4 text-primary" />
-                  Calendar Spread Rollover
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Automatically roll positions from current to next expiry before contract expiration.
-                </p>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <SelectField
-                    label="Instrument"
-                    value={rolloverConfig.instrument}
-                    onChange={(v) => setRolloverConfig({ ...rolloverConfig, instrument: v })}
-                    options={instruments.map((i) => ({ value: i, label: i }))}
-                  />
-                  <NumberField
-                    label="Roll Before Expiry"
-                    value={rolloverConfig.daysBeforeExpiry}
-                    onChange={(v) =>
-                      setRolloverConfig({ ...rolloverConfig, daysBeforeExpiry: v })
-                    }
-                    suffix="days"
-                  />
-                  <SelectField
-                    label="Target Expiry"
-                    value={rolloverConfig.targetExpiry}
-                    onChange={(v) =>
-                      setRolloverConfig({
-                        ...rolloverConfig,
-                        targetExpiry: v as "next" | "far",
-                      })
-                    }
-                    options={[
-                      { value: "next", label: "Next Expiry" },
-                      { value: "far", label: "Far Expiry" },
-                    ]}
-                  />
-                  <NumberField
-                    label="Max Basis Cost"
-                    value={rolloverConfig.maxBasisCost}
-                    onChange={(v) => setRolloverConfig({ ...rolloverConfig, maxBasisCost: v })}
-                    step={0.1}
-                    suffix="%"
-                  />
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/20">
-                  <input
-                    type="checkbox"
-                    checked={rolloverConfig.autoRollover}
-                    onChange={(e) =>
-                      setRolloverConfig({ ...rolloverConfig, autoRollover: e.target.checked })
-                    }
-                    className="rounded border-border"
-                  />
-                  <div>
-                    <p className="text-xs font-medium text-foreground">Auto-Rollover</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Automatically close current expiry and open next expiry positions
-                    </p>
-                  </div>
-                </div>
-
-                {/* Rollover Preview */}
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="px-4 py-2.5 bg-secondary/30 border-b border-border">
-                    <h4 className="text-xs font-semibold text-foreground">Rollover Preview</h4>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {niftyExpiries.slice(0, 3).map((exp, i) => (
-                      <div
-                        key={exp.fullLabel}
-                        className="flex items-center justify-between text-xs"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={cn(
-                              "w-2 h-2 rounded-full",
-                              i === 0 ? "bg-primary" : i === 1 ? "bg-accent" : "bg-muted-foreground"
-                            )}
-                          />
-                          <span className="text-foreground font-mono">{exp.fullLabel}</span>
-                          <Badge variant="secondary" className="text-[8px]">
-                            {i === 0 ? "Current" : i === 1 ? "Next" : "Far"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">{getDaysToExpiry(exp.date)}d</span>
-                          {i === 0 && getDaysToExpiry(exp.date) <= rolloverConfig.daysBeforeExpiry && (
-                            <Badge variant="destructive" className="text-[8px] gap-1">
-                              <AlertTriangle className="w-2.5 h-2.5" />
-                              Roll Now
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Button size="sm" className="gap-1.5">
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  Save Rollover Config
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ═══════════ EXPIRY DAY TAB ═══════════ */}
-          <TabsContent value="expiry" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4 text-primary" />
-                  Expiry Day Automation
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Auto-adjustments on expiry day: square off positions, shift to next expiry, and manage risk.
-                </p>
-
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <SelectField
-                    label="Instrument"
-                    value={expiryConfig.instrument}
-                    onChange={(v) => setExpiryConfig({ ...expiryConfig, instrument: v })}
-                    options={instruments.map((i) => ({ value: i, label: i }))}
-                  />
-                  <div>
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                      Square Off Time
-                    </label>
-                    <input
-                      type="time"
-                      value={expiryConfig.squareOffTime}
-                      onChange={(e) =>
-                        setExpiryConfig({ ...expiryConfig, squareOffTime: e.target.value })
-                      }
-                      className="mt-1 w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-mono"
-                    />
-                  </div>
-                  <NumberField
-                    label="Max Loss to Hold"
-                    value={expiryConfig.maxLossToHold}
-                    onChange={(v) => setExpiryConfig({ ...expiryConfig, maxLossToHold: v })}
-                    suffix="₹"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  {[
-                    {
-                      key: "autoSquareOff",
-                      label: "Auto Square-Off",
-                      desc: "Automatically close all expiring positions at the configured time",
-                      checked: expiryConfig.autoSquareOff,
-                    },
-                    {
-                      key: "shiftToNextExpiry",
-                      label: "Shift to Next Expiry",
-                      desc: "After squaring off, re-deploy the same strategy on the next expiry",
-                      checked: expiryConfig.shiftToNextExpiry,
-                    },
-                  ].map((opt) => (
-                    <div
-                      key={opt.key}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/20"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={opt.checked}
-                        onChange={(e) =>
-                          setExpiryConfig({ ...expiryConfig, [opt.key]: e.target.checked })
-                        }
-                        className="rounded border-border"
-                      />
-                      <div>
-                        <p className="text-xs font-medium text-foreground">{opt.label}</p>
-                        <p className="text-[10px] text-muted-foreground">{opt.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Expiry Day Timeline */}
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="px-4 py-2.5 bg-secondary/30 border-b border-border">
-                    <h4 className="text-xs font-semibold text-foreground">
-                      Expiry Day Timeline
-                      {currentExpiry && (
-                        <span className="text-muted-foreground font-normal ml-2">
-                          Next: {currentExpiry.fullLabel}
-                        </span>
-                      )}
-                    </h4>
-                  </div>
-                  <div className="p-4">
-                    <div className="relative pl-6 space-y-4">
-                      <div className="absolute left-2 top-1 bottom-1 w-px bg-border" />
-                      {[
-                        {
-                          time: "09:15",
-                          action: "Market Opens",
-                          desc: "Monitor opening volatility",
-                          icon: Play,
-                          color: "text-primary",
-                        },
-                        {
-                          time: "09:20",
-                          action: "Deploy Strategy",
-                          desc: "Execute scheduled algo if configured",
-                          icon: Bot,
-                          color: "text-primary",
-                        },
-                        {
-                          time: "12:00",
-                          action: "Mid-Day Check",
-                          desc: "Review P&L, adjust SL if needed",
-                          icon: Shield,
-                          color: "text-warning",
-                        },
-                        {
-                          time: expiryConfig.squareOffTime,
-                          action: "Square Off",
-                          desc: "Close all expiring positions",
-                          icon: AlertTriangle,
-                          color: "text-loss",
-                        },
-                        {
-                          time: "15:20",
-                          action: "Shift Expiry",
-                          desc: "Re-deploy on next expiry if enabled",
-                          icon: ArrowRightLeft,
-                          color: "text-profit",
-                        },
-                        {
-                          time: "15:30",
-                          action: "Market Close",
-                          desc: "Final reconciliation & alerts",
-                          icon: CheckCircle2,
-                          color: "text-muted-foreground",
-                        },
-                      ].map((step, i) => (
-                        <div key={i} className="relative flex items-start gap-3">
-                          <div
-                            className={cn(
-                              "absolute -left-[17px] w-3 h-3 rounded-full border-2 bg-card",
-                              `border-current`,
-                              step.color
-                            )}
-                          />
-                          <span className="text-[10px] font-mono text-muted-foreground w-10 shrink-0 pt-0.5">
-                            {step.time}
-                          </span>
-                          <div>
-                            <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                              <step.icon className={cn("w-3 h-3", step.color)} />
-                              {step.action}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">{step.desc}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <Button size="sm" className="gap-1.5">
-                  <Settings2 className="w-3.5 h-3.5" />
-                  Save Expiry Config
-                </Button>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>

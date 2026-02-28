@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import Index from "./pages/Index";
 import Strategies from "./pages/Strategies";
+import Algo from "./pages/Algo";
 import Positions from "./pages/Positions";
 import Options from "./pages/Options";
 import Futures from "./pages/Futures";
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/strategies" element={<ProtectedRoute><Strategies /></ProtectedRoute>} />
+          <Route path="/algo" element={<ProtectedRoute><Algo /></ProtectedRoute>} />
           <Route path="/positions" element={<ProtectedRoute><Positions /></ProtectedRoute>} />
           <Route path="/options" element={<ProtectedRoute><Options /></ProtectedRoute>} />
           <Route path="/futures" element={<ProtectedRoute><Futures /></ProtectedRoute>} />

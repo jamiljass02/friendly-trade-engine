@@ -17,6 +17,8 @@ async function sha256(message: string): Promise<string> {
 }
 
 serve(async (req) => {
+  console.log("Request received:", req.method, req.url);
+  
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }

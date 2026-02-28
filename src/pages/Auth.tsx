@@ -37,6 +37,7 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
+      console.log("Calling edge function at:", FUNCTION_URL);
       const response = await fetch(FUNCTION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -51,7 +52,9 @@ const Auth = () => {
         }),
       });
 
+      console.log("Response status:", response.status);
       const data = await response.json();
+      console.log("Response data:", data);
       if (!response.ok || data.error) throw new Error(data.error || "Login failed");
 
       saveSession({
@@ -64,7 +67,8 @@ const Auth = () => {
 
       toast({ title: "Connected!", description: `Logged in as ${data.username}` });
     } catch (err: any) {
-      toast({ title: "Login Failed", description: err.message, variant: "destructive" });
+      console.error("Login error:", err);
+      toast({ title: "Login Failed", description: err.message || String(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }

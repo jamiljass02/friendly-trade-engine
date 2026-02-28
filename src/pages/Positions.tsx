@@ -6,10 +6,11 @@ import HoldingsView from "@/components/HoldingsView";
 import PositionsSummary from "@/components/PositionsSummary";
 import { usePositions } from "@/hooks/usePositions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { RefreshCw, Loader2 } from "lucide-react";
+import { RefreshCw, Loader2, AlertTriangle, X, Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const Positions = () => {
-  const { positions, loading, refresh } = usePositions();
+  const { positions, loading, alerts, autoRefresh, setAutoRefresh, dismissAlert, refresh } = usePositions();
 
   return (
     <AppLayout>
@@ -21,18 +22,64 @@ const Positions = () => {
               Comprehensive view of your portfolio
             </p>
           </div>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="p-2 rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 text-muted-foreground" />
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Auto-refresh toggle */}
+            <button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors border",
+                autoRefresh
+                  ? "bg-success/10 border-success/30 text-profit"
+                  : "bg-muted border-border/50 text-muted-foreground"
+              )}
+            >
+              <div className={cn("w-1.5 h-1.5 rounded-full", autoRefresh ? "bg-profit animate-pulse" : "bg-muted-foreground")} />
+              {autoRefresh ? "LIVE" : "Paused"}
+            </button>
+            <button
+              onClick={refresh}
+              disabled={loading}
+              className="p-2 rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 text-muted-foreground" />
+              )}
+            </button>
+          </div>
         </div>
+
+        {/* Alerts Banner */}
+        {alerts.length > 0 && (
+          <div className="space-y-2">
+            {alerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={cn(
+                  "flex items-center justify-between px-4 py-2.5 rounded-xl border",
+                  alert.severity === "critical"
+                    ? "bg-destructive/10 border-destructive/30"
+                    : "bg-warning/10 border-warning/30"
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  {alert.type === "margin" ? (
+                    <AlertTriangle className={cn("w-4 h-4 shrink-0", alert.severity === "critical" ? "text-loss" : "text-warning")} />
+                  ) : (
+                    <Clock className={cn("w-4 h-4 shrink-0", alert.severity === "critical" ? "text-loss" : "text-warning")} />
+                  )}
+                  <span className={cn("text-xs font-medium", alert.severity === "critical" ? "text-loss" : "text-warning")}>
+                    {alert.message}
+                  </span>
+                </div>
+                <button onClick={() => dismissAlert(alert.id)} className="p-1 rounded hover:bg-muted/50 transition-colors">
+                  <X className="w-3 h-3 text-muted-foreground" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <PositionsSummary positions={positions} loading={loading} />
 
@@ -61,7 +108,7 @@ const Positions = () => {
           </TabsContent>
 
           <TabsContent value="positions" className="mt-4">
-            <DetailedPositionsTable positions={positions} loading={loading} />
+            <DetailedPositionsTable positions={positions} loading={loading} onRefresh={refresh} />
           </TabsContent>
 
           <TabsContent value="holdings" className="mt-4">

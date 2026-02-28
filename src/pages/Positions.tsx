@@ -1,16 +1,14 @@
-import { useState } from "react";
 import AppLayout from "@/components/AppLayout";
-import PositionsTable from "@/components/PositionsTable";
 import PositionStrategyView from "@/components/PositionStrategyView";
+import AssetClassView from "@/components/AssetClassView";
+import DetailedPositionsTable from "@/components/DetailedPositionsTable";
+import HoldingsView from "@/components/HoldingsView";
 import PositionsSummary from "@/components/PositionsSummary";
 import { usePositions } from "@/hooks/usePositions";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RefreshCw, Loader2 } from "lucide-react";
 
-type ViewMode = "table" | "strategy";
-
 const Positions = () => {
-  const [view, setView] = useState<ViewMode>("strategy");
   const { positions, loading, refresh } = usePositions();
 
   return (
@@ -23,54 +21,53 @@ const Positions = () => {
               Comprehensive view of your portfolio
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={refresh}
-              disabled={loading}
-              className="p-2 rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
-            <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
-              <button
-                onClick={() => setView("strategy")}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors",
-                  view === "strategy"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Strategy View
-              </button>
-              <button
-                onClick={() => setView("table")}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors",
-                  view === "table"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Table View
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="p-2 rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 text-muted-foreground" />
+            )}
+          </button>
         </div>
 
-        {/* Summary Dashboard */}
         <PositionsSummary positions={positions} loading={loading} />
 
-        {/* Positions View */}
-        {view === "strategy" ? (
-          <PositionStrategyView positions={positions} loading={loading} onRefresh={refresh} />
-        ) : (
-          <PositionsTable />
-        )}
+        <Tabs defaultValue="strategy" className="w-full">
+          <TabsList className="bg-muted/80 backdrop-blur-sm w-full justify-start gap-0.5 h-auto p-1 rounded-xl">
+            <TabsTrigger value="strategy" className="text-[11px] px-4 py-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Strategy View
+            </TabsTrigger>
+            <TabsTrigger value="asset-class" className="text-[11px] px-4 py-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Asset Class
+            </TabsTrigger>
+            <TabsTrigger value="positions" className="text-[11px] px-4 py-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Positions
+            </TabsTrigger>
+            <TabsTrigger value="holdings" className="text-[11px] px-4 py-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Holdings
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="strategy" className="mt-4">
+            <PositionStrategyView positions={positions} loading={loading} onRefresh={refresh} />
+          </TabsContent>
+
+          <TabsContent value="asset-class" className="mt-4">
+            <AssetClassView positions={positions} loading={loading} />
+          </TabsContent>
+
+          <TabsContent value="positions" className="mt-4">
+            <DetailedPositionsTable positions={positions} loading={loading} />
+          </TabsContent>
+
+          <TabsContent value="holdings" className="mt-4">
+            <HoldingsView positions={positions} loading={loading} />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppLayout>
   );

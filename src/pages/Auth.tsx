@@ -6,9 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
-import { xhrFetch } from "@/lib/xhr-fetch";
-
-const FUNCTION_URL = "https://ytzzmnharipqcucfachn.supabase.co/functions/v1/shoonya-api";
+import { brokerFetch } from "@/lib/broker-api";
 
 const Auth = () => {
   const { isLoggedIn, isLoading, saveSession } = useShoonyaSession();
@@ -38,7 +36,7 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { ok, data } = await xhrFetch(FUNCTION_URL, {
+      const { ok, data } = await brokerFetch({
         action: "direct_login",
         user_code: form.user_code,
         password: form.password,

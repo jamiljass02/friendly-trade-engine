@@ -73,8 +73,8 @@ interface OptionsChainProps {
 const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange }: OptionsChainProps) => {
   const { isConnected, searchScrip, getMarketData, getOptionChain } = useBroker();
   const [selectedIndex, setSelectedIndex] = useState("NIFTY");
-  const [optionData, setOptionData] = useState<OptionRow[]>([]);
-  const [spotPrice, setSpotPrice] = useState(0);
+  const [liveOptionData, setLiveOptionData] = useState<OptionRow[] | null>(null);
+  const [liveSpotPrice, setLiveSpotPrice] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -138,15 +138,14 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     return { rows, spot };
   }, [selectedIndex, strikeStep, daysToExpiry]);
 
+  // Reset live data when instrument changes
   useEffect(() => {
-    if (!isConnected) {
-      setOptionData(mockData.rows);
-      setSpotPrice(mockData.spot);
-    }
-  }, [isConnected, mockData]);
+    setLiveOptionData(null);
+    setLiveSpotPrice(null);
+  }, [selectedIndex]);
 
-  const displayData = optionData.length > 0 ? optionData : mockData.rows;
-  const displaySpot = spotPrice > 0 ? spotPrice : mockData.spot;
+  const displayData = liveOptionData ?? mockData.rows;
+  const displaySpot = liveSpotPrice ?? mockData.spot;
   const headers = ["OI", "Vega", "Theta", "Gamma", "Delta", "IV", "LTP"];
 
   return (

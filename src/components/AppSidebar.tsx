@@ -6,10 +6,16 @@ import {
   ClipboardList,
   Settings,
   Zap,
-  TrendingUp,
   Activity,
+  Sun,
+  Moon,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { useBroker } from "@/hooks/useBroker";
+import { useIndexPrices } from "@/hooks/useIndexPrices";
+import { useTheme } from "@/hooks/useTheme";
+import { cn } from "@/lib/utils";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -22,6 +28,8 @@ const navItems = [
 const AppSidebar = () => {
   const location = useLocation();
   const { isConnected, session } = useBroker();
+  const { prices } = useIndexPrices();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50">
@@ -36,7 +44,7 @@ const AppSidebar = () => {
         </div>
       </div>
 
-      {/* Broker Status */}
+      {/* Broker Status + Live Prices */}
       <div className="px-5 py-3 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-profit animate-pulse" : "bg-muted-foreground"}`} />
@@ -49,11 +57,28 @@ const AppSidebar = () => {
             <span className="text-[10px] font-mono text-primary">{session.userCode}</span>
           </div>
         )}
-        <div className="flex items-center gap-3 mt-2">
-          <div className="flex items-center gap-1">
-            <TrendingUp className="w-3 h-3 text-profit" />
-            <span className="text-xs font-mono text-profit">NIFTY 24,150</span>
-          </div>
+
+        {/* Live Index Prices */}
+        <div className="mt-3 space-y-1.5">
+          {prices.map((idx) => (
+            <div key={idx.name} className="flex items-center justify-between">
+              <span className="text-[10px] font-medium text-muted-foreground">{idx.name}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-mono font-semibold text-foreground">
+                  {idx.price > 0 ? idx.price.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}
+                </span>
+                {idx.price > 0 && (
+                  <span className={cn(
+                    "text-[9px] font-mono flex items-center gap-0.5",
+                    idx.change >= 0 ? "text-profit" : "text-loss"
+                  )}>
+                    {idx.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                    {idx.change >= 0 ? "+" : ""}{idx.changePercent.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -80,6 +105,15 @@ const AppSidebar = () => {
 
       {/* Footer */}
       <div className="px-3 py-4 border-t border-sidebar-border">
+        <div className="flex items-center gap-2 mb-3 px-3">
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors w-full"
+          >
+            {theme === "dark" ? <Sun className="w-4 h-4 text-warning" /> : <Moon className="w-4 h-4 text-primary" />}
+            <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+          </button>
+        </div>
         <Link
           to="/settings"
           className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${

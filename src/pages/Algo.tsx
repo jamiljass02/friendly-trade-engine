@@ -76,7 +76,7 @@ interface StrategyLeg {
 
 interface EntryCondition {
   id: string;
-  type: "time" | "premium" | "indicator" | "price_move" | "iv" | "oi_change";
+  type: "time" | "premium" | "indicator" | "price_move" | "iv" | "oi_change" | "day_of_week" | "days_to_expiry";
   operator: ">" | "<" | "=" | ">=" | "<=";
   value: string;
   indicator?: string;
@@ -84,7 +84,7 @@ interface EntryCondition {
 
 interface ExitCondition {
   id: string;
-  type: "time" | "sl_pct" | "target_pct" | "sl_points" | "target_points" | "trailing_sl" | "mtm_loss" | "mtm_profit";
+  type: "time" | "sl_pct" | "target_pct" | "sl_points" | "target_points" | "trailing_sl" | "mtm_loss" | "mtm_profit" | "day_of_week" | "days_to_expiry";
   value: string;
 }
 
@@ -666,6 +666,8 @@ const Algo = () => {
                             { value: "price_move", label: "Price Move %" },
                             { value: "iv", label: "India VIX" },
                             { value: "oi_change", label: "OI Change" },
+                            { value: "day_of_week", label: "Day of Week" },
+                            { value: "days_to_expiry", label: "Days to Expiry" },
                           ]}
                           className="w-28"
                         />
@@ -679,25 +681,45 @@ const Algo = () => {
                           />
                         )}
 
-                        <SelectInput
-                          value={cond.operator}
-                          onChange={(v) => updateEntryCondition(cond.id, { operator: v as any })}
-                          options={[
-                            { value: ">", label: ">" },
-                            { value: "<", label: "<" },
-                            { value: ">=", label: ">=" },
-                            { value: "<=", label: "<=" },
-                            { value: "=", label: "=" },
-                          ]}
-                          className="w-16"
-                        />
+                        {cond.type === "day_of_week" && (
+                          <SelectInput
+                            value={cond.value || "Mon"}
+                            onChange={(v) => updateEntryCondition(cond.id, { value: v })}
+                            options={[
+                              { value: "Mon", label: "Monday" },
+                              { value: "Tue", label: "Tuesday" },
+                              { value: "Wed", label: "Wednesday" },
+                              { value: "Thu", label: "Thursday" },
+                              { value: "Fri", label: "Friday" },
+                            ]}
+                            className="w-28"
+                          />
+                        )}
 
-                        <input
-                          type={cond.type === "time" ? "time" : "text"}
-                          value={cond.value}
-                          onChange={(e) => updateEntryCondition(cond.id, { value: e.target.value })}
-                          className="w-24 bg-muted text-foreground text-xs px-2.5 py-1.5 rounded-md border border-border/50 font-mono"
-                        />
+                        {cond.type !== "day_of_week" && (
+                          <SelectInput
+                            value={cond.operator}
+                            onChange={(v) => updateEntryCondition(cond.id, { operator: v as any })}
+                            options={[
+                              { value: ">", label: ">" },
+                              { value: "<", label: "<" },
+                              { value: ">=", label: ">=" },
+                              { value: "<=", label: "<=" },
+                              { value: "=", label: "=" },
+                            ]}
+                            className="w-16"
+                          />
+                        )}
+
+                        {cond.type !== "day_of_week" && (
+                          <input
+                            type={cond.type === "time" ? "time" : "text"}
+                            value={cond.value}
+                            onChange={(e) => updateEntryCondition(cond.id, { value: e.target.value })}
+                            placeholder={cond.type === "days_to_expiry" ? "e.g. 3" : ""}
+                            className="w-24 bg-muted text-foreground text-xs px-2.5 py-1.5 rounded-md border border-border/50 font-mono"
+                          />
+                        )}
 
                         <Button size="icon" variant="ghost" className="w-6 h-6 shrink-0" onClick={() => removeEntryCondition(cond.id)}>
                           <X className="w-3 h-3 text-muted-foreground" />
@@ -737,16 +759,34 @@ const Algo = () => {
                             { value: "mtm_loss", label: "MTM Loss ₹" },
                             { value: "mtm_profit", label: "MTM Profit ₹" },
                             { value: "time", label: "Exit Time" },
+                            { value: "day_of_week", label: "Day of Week" },
+                            { value: "days_to_expiry", label: "Days to Expiry" },
                           ]}
                           className="w-32"
                         />
 
-                        <input
-                          type={cond.type === "time" ? "time" : "text"}
-                          value={cond.value}
-                          onChange={(e) => updateExitCondition(cond.id, { value: e.target.value })}
-                          className="w-24 bg-muted text-foreground text-xs px-2.5 py-1.5 rounded-md border border-border/50 font-mono"
-                        />
+                        {cond.type === "day_of_week" ? (
+                          <SelectInput
+                            value={cond.value || "Thu"}
+                            onChange={(v) => updateExitCondition(cond.id, { value: v })}
+                            options={[
+                              { value: "Mon", label: "Monday" },
+                              { value: "Tue", label: "Tuesday" },
+                              { value: "Wed", label: "Wednesday" },
+                              { value: "Thu", label: "Thursday" },
+                              { value: "Fri", label: "Friday" },
+                            ]}
+                            className="w-28"
+                          />
+                        ) : (
+                          <input
+                            type={cond.type === "time" ? "time" : "text"}
+                            value={cond.value}
+                            onChange={(e) => updateExitCondition(cond.id, { value: e.target.value })}
+                            placeholder={cond.type === "days_to_expiry" ? "e.g. 0" : ""}
+                            className="w-24 bg-muted text-foreground text-xs px-2.5 py-1.5 rounded-md border border-border/50 font-mono"
+                          />
+                        )}
 
                         <Button size="icon" variant="ghost" className="w-6 h-6 shrink-0" onClick={() => removeExitCondition(cond.id)}>
                           <X className="w-3 h-3 text-muted-foreground" />

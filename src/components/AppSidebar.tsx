@@ -14,8 +14,11 @@ import {
   PanelLeft,
   Bot,
   FlaskConical,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useBroker } from "@/hooks/useBroker";
+import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -40,6 +43,7 @@ interface AppSidebarProps {
 const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const { isConnected, session } = useBroker();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <aside
@@ -133,6 +137,24 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
 
       {/* Footer */}
       <div className="px-2 py-3 border-t border-sidebar-border space-y-1">
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          title={collapsed ? (theme === "dark" ? "Light Mode" : "Dark Mode") : undefined}
+          className={cn(
+            "flex items-center gap-2 rounded-lg text-sm transition-colors w-full",
+            collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2",
+            "text-sidebar-foreground hover:bg-sidebar-accent"
+          )}
+        >
+          {theme === "dark" ? (
+            <Sun className="w-4 h-4 text-warning shrink-0" />
+          ) : (
+            <Moon className="w-4 h-4 text-primary shrink-0" />
+          )}
+          {!collapsed && <span className="text-xs">{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
+        </button>
+
         <Link
           to="/settings"
           title={collapsed ? "Settings" : undefined}

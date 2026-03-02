@@ -18,7 +18,15 @@ export function useShoonyaSession() {
     const stored = localStorage.getItem(SESSION_KEY);
     if (stored) {
       try {
-        setSession(JSON.parse(stored));
+        const parsed: ShoonyaSession = JSON.parse(stored);
+        const loginDate = new Date(parsed.loginTime).toDateString();
+        const today = new Date().toDateString();
+        if (loginDate !== today) {
+          // Session expired — force re-login each day
+          localStorage.removeItem(SESSION_KEY);
+        } else {
+          setSession(parsed);
+        }
       } catch {
         localStorage.removeItem(SESSION_KEY);
       }

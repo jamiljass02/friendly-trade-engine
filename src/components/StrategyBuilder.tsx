@@ -82,17 +82,15 @@ const StrategyBuilder = () => {
               <option>FINNIFTY</option>
             </select>
 
-            <select
-              value={leg.type}
-              onChange={(e) => updateLeg(leg.id, "type", e.target.value)}
+            <button
+              onClick={() => updateLeg(leg.id, "type", leg.type === "CE" ? "PE" : "CE")}
               className={cn(
-                "text-xs px-2.5 py-1.5 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-semibold",
-                leg.type === "CE" ? "bg-success/10 text-profit" : "bg-destructive/10 text-loss"
+                "text-xs px-2.5 py-1.5 rounded-md border border-border/50 outline-none font-semibold cursor-pointer transition-colors",
+                leg.type === "CE" ? "bg-success/10 text-profit border-success/30" : "bg-destructive/10 text-loss border-destructive/30"
               )}
             >
-              <option value="CE">CE</option>
-              <option value="PE">PE</option>
-            </select>
+              {leg.type}
+            </button>
 
             <input
               type="number"

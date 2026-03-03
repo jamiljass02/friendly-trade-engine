@@ -68,10 +68,14 @@ interface StrategyLeg {
   segment: "OPT" | "FUT";
   side: "BUY" | "SELL";
   optionType: "CE" | "PE";
-  strikeSelection: "ATM" | "ATM+1" | "ATM+2" | "ATM+3" | "ATM-1" | "ATM-2" | "ATM-3" | "CUSTOM";
+  strikeSelection: string;
   customStrike?: number;
   lots: number;
-  expiry: "current" | "next" | "far";
+  expiry: "current_week" | "next_week" | "current_month" | "next_month" | "custom";
+  customExpiry?: string;
+  premiumMode?: "between" | "near" | "below" | "above" | "none";
+  premiumMin?: number;
+  premiumMax?: number;
 }
 
 interface EntryCondition {
@@ -105,7 +109,19 @@ interface AlgoStrategy {
 // ── Constants ──
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
 const lotSizes: Record<string, number> = { NIFTY: 50, BANKNIFTY: 15, SENSEX: 10, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 10 };
-const strikeOptions = ["ATM", "ATM+1", "ATM+2", "ATM+3", "ATM-1", "ATM-2", "ATM-3", "CUSTOM"];
+const strikeOptions = [
+  "ATM",
+  ...Array.from({ length: 30 }, (_, i) => `ITM ${i + 1}`),
+  ...Array.from({ length: 30 }, (_, i) => `OTM ${i + 1}`),
+  "CUSTOM",
+];
+const premiumModes = [
+  { value: "none", label: "No Filter" },
+  { value: "between", label: "Between ₹X – ₹Y" },
+  { value: "near", label: "Near ₹X" },
+  { value: "below", label: "Below ₹X" },
+  { value: "above", label: "Above ₹X" },
+];
 
 const indicatorOptions = [
   "RSI (14)", "MACD (12,26,9)", "EMA (9)", "EMA (21)", "SMA (20)", "SMA (50)",
@@ -118,8 +134,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Short Straddle",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
-      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [
@@ -133,8 +149,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Short Strangle",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM+2", lots: 1, expiry: "current" },
-      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM-2", lots: 1, expiry: "current" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [
@@ -148,10 +164,10 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Iron Condor",
     instrument: "BANKNIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM+1", lots: 1, expiry: "current" },
-      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM+3", lots: 1, expiry: "current" },
-      { id: "3", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM-1", lots: 1, expiry: "current" },
-      { id: "4", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "ATM-3", lots: 1, expiry: "current" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
+      { id: "3", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
+      { id: "4", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
     exitConditions: [
@@ -166,8 +182,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Calendar Spread",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
-      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "next" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "next_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
     exitConditions: [
@@ -181,8 +197,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Bull Put Spread",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM-1", lots: 1, expiry: "current" },
-      { id: "2", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "ATM-3", lots: 1, expiry: "current" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "price_move", operator: ">", value: "0.3" }],
     exitConditions: [
@@ -196,8 +212,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Expiry Day Straddle",
     instrument: "SENSEX",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
-      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [
@@ -233,8 +249,8 @@ const Algo = () => {
     name: "My Strategy",
     instrument: "NIFTY",
     legs: [
-      { id: generateId(), segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
-      { id: generateId(), segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+      { id: generateId(), segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
+      { id: generateId(), segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
     ],
     entryConditions: [{ id: generateId(), type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [{ id: generateId(), type: "sl_pct", value: "30" }],
@@ -265,7 +281,7 @@ const Algo = () => {
       ...editingStrategy,
       legs: [
         ...editingStrategy.legs,
-        { id: generateId(), segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current" },
+        { id: generateId(), segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
       ],
     });
   };
@@ -531,7 +547,7 @@ const Algo = () => {
                   <CardContent className="px-4 pb-4">
                     <div className="space-y-2">
                       {/* Column Headers */}
-                      <div className="grid grid-cols-[40px_70px_60px_55px_100px_65px_70px_32px] gap-2 text-[9px] text-muted-foreground uppercase tracking-wider px-1">
+                      <div className="grid grid-cols-[40px_70px_60px_80px_120px_65px_100px_32px] gap-2 text-[9px] text-muted-foreground uppercase tracking-wider px-1">
                         <span>Leg</span>
                         <span>Segment</span>
                         <span>B/S</span>
@@ -543,87 +559,144 @@ const Algo = () => {
                       </div>
 
                       {editingStrategy.legs.map((leg, i) => (
-                        <div
-                          key={leg.id}
-                          className={cn(
-                            "grid grid-cols-[40px_70px_60px_55px_100px_65px_70px_32px] gap-2 items-center p-2 rounded-lg border transition-colors",
-                            leg.side === "BUY" ? "border-success/20 bg-success/5" : "border-destructive/20 bg-destructive/5"
-                          )}
-                        >
-                          <div className="flex items-center gap-1">
-                            <GripVertical className="w-3 h-3 text-muted-foreground/40" />
-                            <span className="text-xs font-mono text-muted-foreground">L{i + 1}</span>
-                          </div>
-
-                          <select
-                            value={leg.segment}
-                            onChange={(e) => updateLeg(leg.id, { segment: e.target.value as any })}
-                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                          >
-                            <option value="OPT">Options</option>
-                            <option value="FUT">Futures</option>
-                          </select>
-
-                          <button
-                            onClick={() => updateLeg(leg.id, { side: leg.side === "BUY" ? "SELL" : "BUY" })}
+                        <div key={leg.id} className="space-y-2">
+                          <div
                             className={cn(
-                              "text-[11px] font-bold py-1 rounded border text-center",
-                              leg.side === "BUY"
-                                ? "bg-success/20 text-profit border-success/30"
-                                : "bg-destructive/20 text-loss border-destructive/30"
+                              "grid grid-cols-[40px_70px_60px_80px_120px_65px_100px_32px] gap-2 items-center p-2 rounded-lg border transition-colors",
+                              leg.side === "BUY" ? "border-success/20 bg-success/5" : "border-destructive/20 bg-destructive/5"
                             )}
                           >
-                            {leg.side}
-                          </button>
+                            <div className="flex items-center gap-1">
+                              <GripVertical className="w-3 h-3 text-muted-foreground/40" />
+                              <span className="text-xs font-mono text-muted-foreground">L{i + 1}</span>
+                            </div>
 
-                          {leg.segment === "OPT" ? (
                             <select
-                              value={leg.optionType}
-                              onChange={(e) => updateLeg(leg.id, { optionType: e.target.value as any })}
+                              value={leg.segment}
+                              onChange={(e) => updateLeg(leg.id, { segment: e.target.value as any })}
                               className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
                             >
-                              <option value="CE">CE</option>
-                              <option value="PE">PE</option>
+                              <option value="OPT">Options</option>
+                              <option value="FUT">Futures</option>
                             </select>
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground text-center">FUT</span>
+
+                            <button
+                              onClick={() => updateLeg(leg.id, { side: leg.side === "BUY" ? "SELL" : "BUY" })}
+                              className={cn(
+                                "text-[11px] font-bold py-1 rounded border text-center",
+                                leg.side === "BUY"
+                                  ? "bg-success/20 text-profit border-success/30"
+                                  : "bg-destructive/20 text-loss border-destructive/30"
+                              )}
+                            >
+                              {leg.side}
+                            </button>
+
+                            {leg.segment === "OPT" ? (
+                              <button
+                                onClick={() => updateLeg(leg.id, { optionType: leg.optionType === "CE" ? "PE" : "CE" })}
+                                className={cn(
+                                  "text-[11px] font-bold py-1 rounded border text-center transition-colors",
+                                  leg.optionType === "CE"
+                                    ? "bg-success/20 text-profit border-success/30"
+                                    : "bg-destructive/20 text-loss border-destructive/30"
+                                )}
+                              >
+                                {leg.optionType}
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground text-center">FUT</span>
+                            )}
+
+                            <select
+                              value={leg.strikeSelection}
+                              onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value })}
+                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                            >
+                              {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                            </select>
+
+                            <input
+                              type="number"
+                              value={leg.lots}
+                              onChange={(e) => updateLeg(leg.id, { lots: Math.max(1, Number(e.target.value)) })}
+                              min={1}
+                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono w-full"
+                            />
+
+                            <select
+                              value={leg.expiry}
+                              onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
+                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                            >
+                              <option value="current_week">Current Wk</option>
+                              <option value="next_week">Next Wk</option>
+                              <option value="current_month">Current Mo</option>
+                              <option value="next_month">Next Mo</option>
+                              <option value="custom">Custom</option>
+                            </select>
+
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="w-6 h-6"
+                              onClick={() => removeLeg(leg.id)}
+                              disabled={editingStrategy.legs.length <= 1}
+                            >
+                              <X className="w-3 h-3 text-muted-foreground" />
+                            </Button>
+                          </div>
+
+                          {/* Premium Filter Row */}
+                          {leg.segment === "OPT" && (
+                            <div className="flex items-center gap-2 px-2 ml-10 flex-wrap">
+                              <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0">Premium:</span>
+                              <select
+                                value={leg.premiumMode || "none"}
+                                onChange={(e) => updateLeg(leg.id, { premiumMode: e.target.value as any })}
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                              >
+                                {premiumModes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                              </select>
+
+                              {leg.premiumMode && leg.premiumMode !== "none" && (
+                                <>
+                                  <span className="text-[10px] text-muted-foreground">₹</span>
+                                  <input
+                                    type="number"
+                                    value={leg.premiumMin ?? ""}
+                                    onChange={(e) => updateLeg(leg.id, { premiumMin: Number(e.target.value) })}
+                                    placeholder={leg.premiumMode === "between" ? "Min" : "Value"}
+                                    className="w-16 bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono"
+                                  />
+                                  {leg.premiumMode === "between" && (
+                                    <>
+                                      <span className="text-[10px] text-muted-foreground">to ₹</span>
+                                      <input
+                                        type="number"
+                                        value={leg.premiumMax ?? ""}
+                                        onChange={(e) => updateLeg(leg.id, { premiumMax: Number(e.target.value) })}
+                                        placeholder="Max"
+                                        className="w-16 bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono"
+                                      />
+                                    </>
+                                  )}
+                                </>
+                              )}
+
+                              {leg.expiry === "custom" && (
+                                <>
+                                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0 ml-2">Date:</span>
+                                  <input
+                                    type="date"
+                                    value={leg.customExpiry || ""}
+                                    onChange={(e) => updateLeg(leg.id, { customExpiry: e.target.value })}
+                                    className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                                  />
+                                </>
+                              )}
+                            </div>
                           )}
-
-                          <select
-                            value={leg.strikeSelection}
-                            onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value as any })}
-                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                          >
-                            {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                          </select>
-
-                          <input
-                            type="number"
-                            value={leg.lots}
-                            onChange={(e) => updateLeg(leg.id, { lots: Math.max(1, Number(e.target.value)) })}
-                            min={1}
-                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono w-full"
-                          />
-
-                          <select
-                            value={leg.expiry}
-                            onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
-                            className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                          >
-                            <option value="current">Current</option>
-                            <option value="next">Next</option>
-                            <option value="far">Far</option>
-                          </select>
-
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="w-6 h-6"
-                            onClick={() => removeLeg(leg.id)}
-                            disabled={editingStrategy.legs.length <= 1}
-                          >
-                            <X className="w-3 h-3 text-muted-foreground" />
-                          </Button>
                         </div>
                       ))}
                     </div>

@@ -118,32 +118,39 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     onInstrumentChange?.(symbol);
   }, [onInstrumentChange]);
 
-  // Generate chain data with volume
+  // Generate chain data with stable seeded values (not random on every render)
   const chainData = useMemo(() => {
     const spot = getDefaultSpotPrice(selectedSymbol);
     const step = strikeStep;
     const start = Math.round((spot - 15 * step) / step) * step;
     const rows: OptionRow[] = [];
+    // Seed-based pseudo-random for stable data
+    const seed = (n: number) => {
+      const x = Math.sin(n * 9301 + 49297) * 49297;
+      return x - Math.floor(x);
+    };
     for (let i = 0; i < 30; i++) {
       const strike = start + i * step;
-      const callIV = 12 + Math.random() * 8 + Math.abs(spot - strike) / spot * 20;
-      const putIV = 12 + Math.random() * 8 + Math.abs(spot - strike) / spot * 20;
+      const s1 = seed(strike + daysToExpiry * 100);
+      const s2 = seed(strike * 2 + daysToExpiry * 200);
+      const callIV = 12 + s1 * 8 + Math.abs(spot - strike) / spot * 20;
+      const putIV = 12 + s2 * 8 + Math.abs(spot - strike) / spot * 20;
       const callGreeks = calcGreeks(spot, strike, callIV, daysToExpiry, true);
       const putGreeks = calcGreeks(spot, strike, putIV, daysToExpiry, false);
       const intrinsicCall = Math.max(0, spot - strike);
       const intrinsicPut = Math.max(0, strike - spot);
-      const callOI = Math.floor(Math.random() * 3000000);
-      const putOI = Math.floor(Math.random() * 3000000);
+      const callOI = Math.floor(seed(strike * 3) * 3000000);
+      const putOI = Math.floor(seed(strike * 4 + 1) * 3000000);
       rows.push({
         strike,
-        callLTP: Math.max(0.05, intrinsicCall + 20 + Math.random() * 50),
+        callLTP: Math.max(0.05, intrinsicCall + 20 + seed(strike * 5) * 50),
         callIV, callDelta: callGreeks.delta, callGamma: callGreeks.gamma,
         callTheta: callGreeks.theta, callVega: callGreeks.vega, callOI,
-        callVolume: Math.floor(callOI * (0.05 + Math.random() * 0.15)),
-        putLTP: Math.max(0.05, intrinsicPut + 20 + Math.random() * 50),
+        callVolume: Math.floor(callOI * (0.05 + seed(strike * 6) * 0.15)),
+        putLTP: Math.max(0.05, intrinsicPut + 20 + seed(strike * 7) * 50),
         putIV, putDelta: putGreeks.delta, putGamma: putGreeks.gamma,
         putTheta: putGreeks.theta, putVega: putGreeks.vega, putOI,
-        putVolume: Math.floor(putOI * (0.05 + Math.random() * 0.15)),
+        putVolume: Math.floor(putOI * (0.05 + seed(strike * 8) * 0.15)),
       });
     }
     return { rows, spot };

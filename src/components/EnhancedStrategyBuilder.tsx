@@ -389,6 +389,15 @@ const EnhancedStrategyBuilder = () => {
 
   return (
     <div className="space-y-6">
+      {/* Payoff Chart on top */}
+      {payoffLegs.length > 0 && (
+        <PayoffChart
+          legs={payoffLegs}
+          instrument={primaryInstrument}
+          qty={legs[0]?.lots * primaryLotSize || primaryLotSize}
+        />
+      )}
+
       {/* Header */}
       <div className="glass-card rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
@@ -923,14 +932,7 @@ const EnhancedStrategyBuilder = () => {
         )}
       </div>
 
-      {/* Payoff Chart */}
-      {payoffLegs.length > 0 && (
-        <PayoffChart
-          legs={payoffLegs}
-          instrument={primaryInstrument}
-          qty={legs[0]?.lots * primaryLotSize || primaryLotSize}
-        />
-      )}
+
     </div>
   );
 };

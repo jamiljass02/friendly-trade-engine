@@ -71,7 +71,7 @@ interface StrategyLeg {
   strikeSelection: string;
   customStrike?: number;
   lots: number;
-  expiry: "current_week" | "next_week" | "current_month" | "next_month" | "custom";
+  expiry: "current_week" | "next_week" | "current_month" | "next_month" | "far_month" | "custom";
   customExpiry?: string;
   premiumMode?: "between" | "near" | "below" | "above" | "none";
   premiumMin?: number;
@@ -552,7 +552,7 @@ const Algo = () => {
                         <span>Segment</span>
                         <span>B/S</span>
                         <span>Type</span>
-                        <span>Strike</span>
+                        <span>Strike/Contract</span>
                         <span>Lots</span>
                         <span>Expiry</span>
                         <span></span>
@@ -608,13 +608,25 @@ const Algo = () => {
                               <span className="text-[11px] text-muted-foreground text-center">FUT</span>
                             )}
 
-                            <select
-                              value={leg.strikeSelection}
-                              onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value })}
-                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                            >
-                              {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                            {leg.segment === "OPT" ? (
+                              <select
+                                value={leg.strikeSelection}
+                                onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value })}
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                              >
+                                {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            ) : (
+                              <select
+                                value={leg.expiry}
+                                onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                              >
+                                <option value="current_month">Month 1 (Near)</option>
+                                <option value="next_month">Month 2 (Mid)</option>
+                                <option value="far_month">Month 3 (Far)</option>
+                              </select>
+                            )}
 
                             <input
                               type="number"
@@ -624,17 +636,19 @@ const Algo = () => {
                               className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono w-full"
                             />
 
-                            <select
-                              value={leg.expiry}
-                              onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
-                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                            >
-                              <option value="current_week">Current Wk</option>
-                              <option value="next_week">Next Wk</option>
-                              <option value="current_month">Current Mo</option>
-                              <option value="next_month">Next Mo</option>
-                              <option value="custom">Custom</option>
-                            </select>
+                            {leg.segment === "OPT" && (
+                              <select
+                                value={leg.expiry}
+                                onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                              >
+                                <option value="current_week">Current Wk</option>
+                                <option value="next_week">Next Wk</option>
+                                <option value="current_month">Current Mo</option>
+                                <option value="next_month">Next Mo</option>
+                                <option value="custom">Custom</option>
+                              </select>
+                            )}
 
                             <Button
                               size="icon"

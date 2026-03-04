@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import Index from "./pages/Index";
 import Strategies from "./pages/Strategies";
@@ -17,18 +18,23 @@ import RiskManagement from "./pages/RiskManagement";
 import Orders from "./pages/Orders";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
+import BrokerLogin from "./pages/BrokerLogin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isLoggedIn, isLoading } = useShoonyaSession();
-  if (isLoading) return (
+  const { user, isLoading: authLoading } = useAuth();
+  const { isLoggedIn, isLoading: brokerLoading } = useShoonyaSession();
+
+  if (authLoading || brokerLoading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   );
-  if (!isLoggedIn) return <Navigate to="/auth" replace />;
+
+  if (!user) return <Navigate to="/auth" replace />;
+  if (!isLoggedIn) return <Navigate to="/broker-login" replace />;
   return <>{children}</>;
 };
 
@@ -40,6 +46,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
+          <Route path="/broker-login" element={<BrokerLogin />} />
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/strategies" element={<ProtectedRoute><Strategies /></ProtectedRoute>} />
           <Route path="/algo" element={<ProtectedRoute><Algo /></ProtectedRoute>} />

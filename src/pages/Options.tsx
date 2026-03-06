@@ -16,6 +16,7 @@ const Options = () => {
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [instrument, setInstrument] = useState("NIFTY");
   const [expiryDate, setExpiryDate] = useState<Date | undefined>();
+  const [liveSpot, setLiveSpot] = useState<number | null>(null);
   const inst = getInstrument(instrument);
   const defaultLot = inst?.lotSize || 25;
   const [qty, setQty] = useState(defaultLot);
@@ -71,6 +72,7 @@ const Options = () => {
               selectedStrikes={selectedLegs.map((l) => ({ strike: l.strike, type: l.type }))}
               onInstrumentChange={handleInstrumentChange}
               onExpiryChange={handleExpiryChange}
+              onSpotPriceChange={setLiveSpot}
             />
             {selectedLegs.length > 0 && (
               <PayoffChart legs={selectedLegs} instrument={instrument} qty={qty} />

@@ -75,9 +75,10 @@ interface OptionsChainProps {
   selectedStrikes?: { strike: number; type: "CE" | "PE" }[];
   onInstrumentChange?: (symbol: string) => void;
   onExpiryChange?: (expiryDate: Date) => void;
+  onSpotPriceChange?: (spot: number) => void;
 }
 
-const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange, onExpiryChange }: OptionsChainProps) => {
+const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange, onExpiryChange, onSpotPriceChange }: OptionsChainProps) => {
   const { isConnected, getOptionChain, getMarketData } = useBroker();
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY");
   const [chainTab, setChainTab] = useState<"index" | "stock">("index");
@@ -87,6 +88,8 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
   const [liveSpot, setLiveSpot] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
+  const hasScrolledRef = useRef(false);
   const [favorites, setFavorites] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("oc-favorites") || "[]"); } catch { return []; }
   });
@@ -139,21 +142,25 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     if (!isConnected || !instrument || !selectedExpiryObj) return;
 
     try {
-      const spot = getDefaultSpotPrice(selectedSymbol);
-      const atmStrike = Math.round(spot / strikeStep) * strikeStep;
+      let spot = liveSpot || getDefaultSpotPrice(selectedSymbol);
 
-      // Try fetching spot price from broker
+      // Fetch live spot price from broker FIRST
       if (instrument.type === "index" && (instrument as any).spotToken) {
         try {
           const spotExchange = (instrument as any).exchange === "BFO" ? "BSE" : "NSE";
           const spotData = await getMarketData((instrument as any).spotToken, spotExchange);
           if (spotData?.lp) {
-            setLiveSpot(parseFloat(spotData.lp));
+            spot = parseFloat(spotData.lp);
+            setLiveSpot(spot);
+            onSpotPriceChange?.(spot);
           }
         } catch {
-          // Use default spot if market data fails
+          // Use default/cached spot if market data fails
         }
       }
+
+      // Use live spot for ATM calculation
+      const atmStrike = Math.round(spot / strikeStep) * strikeStep;
 
       // Fetch option chain
       const expiryStr = formatExpiryForSymbol(selectedExpiryObj.date);
@@ -221,7 +228,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
       console.error("Live chain fetch error:", err.message);
       setIsLive(false);
     }
-  }, [isConnected, instrument, selectedSymbol, selectedExpiryObj, strikeStep, daysToExpiry, liveSpot, getOptionChain, getMarketData]);
+  }, [isConnected, instrument, selectedSymbol, selectedExpiryObj, strikeStep, daysToExpiry, liveSpot, getOptionChain, getMarketData, onSpotPriceChange]);
 
   // Poll every 1 second when connected
   useEffect(() => {
@@ -283,6 +290,23 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     }
     return mockChainData;
   }, [liveData, liveSpot, selectedSymbol, mockChainData]);
+
+  // Auto-scroll to ATM row on first data load or symbol change
+  useEffect(() => {
+    hasScrolledRef.current = false;
+  }, [selectedSymbol]);
+
+  useEffect(() => {
+    if (hasScrolledRef.current || !tableRef.current || chainData.rows.length === 0) return;
+    const spot = chainData.spot;
+    const atmIdx = chainData.rows.findIndex((r) => Math.abs(r.strike - spot) <= strikeStep / 2);
+    if (atmIdx < 0) return;
+    const rows = tableRef.current.querySelectorAll("tbody tr");
+    if (rows[atmIdx]) {
+      rows[atmIdx].scrollIntoView({ block: "center", behavior: "smooth" });
+      hasScrolledRef.current = true;
+    }
+  }, [chainData, strikeStep]);
 
   // Analytics
   const analytics = useMemo(() => {
@@ -470,7 +494,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
 
       {/* Chain Table */}
       <div className="glass-card rounded-xl overflow-hidden">
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+        <div ref={tableRef} className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <table className="w-full text-xs border-collapse">
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b border-border/50">

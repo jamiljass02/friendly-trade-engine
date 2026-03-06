@@ -1,11 +1,11 @@
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useBroker } from "@/hooks/useBroker";
-import { CheckSquare, Star, Search, X, TrendingUp, BarChart3, Activity } from "lucide-react";
+import { CheckSquare, Star, Search, X, TrendingUp, BarChart3, Activity, Wifi, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ExpirySelector from "./ExpirySelector";
 import { getInstrument, getDefaultSpotPrice, INDEX_INSTRUMENTS, FNO_STOCKS, type Instrument } from "@/lib/instruments";
-import { getUpcomingExpiries, getDaysToExpiry, type ExpiryDate } from "@/lib/expiry-utils";
+import { getUpcomingExpiries, getDaysToExpiry, formatExpiryForSymbol, type ExpiryDate } from "@/lib/expiry-utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface OptionRow {
@@ -26,6 +26,8 @@ interface OptionRow {
   putVega: number;
   putOI: number;
   putVolume: number;
+  callTsym?: string;
+  putTsym?: string;
 }
 
 function calcGreeks(spot: number, strike: number, iv: number, daysToExpiry: number, isCall: boolean) {
@@ -66,27 +68,30 @@ const formatNum = (n: number) => {
   return n.toString();
 };
 
-// Volume leaders from mock data
 const VOLUME_LEADERS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SBIN", "TATAMOTORS", "BAJFINANCE", "ICICIBANK"];
 
 interface OptionsChainProps {
   onStrikeSelect?: (strike: number, type: "CE" | "PE", ltp: number) => void;
   selectedStrikes?: { strike: number; type: "CE" | "PE" }[];
   onInstrumentChange?: (symbol: string) => void;
+  onExpiryChange?: (expiryDate: Date) => void;
 }
 
-const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange }: OptionsChainProps) => {
-  const { isConnected } = useBroker();
+const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange, onExpiryChange }: OptionsChainProps) => {
+  const { isConnected, getOptionChain, getMarketData } = useBroker();
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY");
   const [chainTab, setChainTab] = useState<"index" | "stock">("index");
   const [stockSearch, setStockSearch] = useState("");
   const [showStockPanel, setShowStockPanel] = useState(false);
+  const [liveData, setLiveData] = useState<OptionRow[] | null>(null);
+  const [liveSpot, setLiveSpot] = useState<number | null>(null);
+  const [isLive, setIsLive] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("oc-favorites") || "[]"); } catch { return []; }
   });
   const { toast } = useToast();
 
-  // Persist favorites
   useEffect(() => { localStorage.setItem("oc-favorites", JSON.stringify(favorites)); }, [favorites]);
 
   const toggleFavorite = (sym: string) => {
@@ -99,8 +104,17 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
   const [selectedExpiry, setSelectedExpiry] = useState<string>("");
 
   useEffect(() => {
-    if (expiries.length > 0) setSelectedExpiry(expiries[0].label);
+    if (expiries.length > 0) {
+      setSelectedExpiry(expiries[0].label);
+      onExpiryChange?.(expiries[0].date);
+    }
   }, [selectedSymbol, expiries]);
+
+  const handleExpirySelect = useCallback((label: string) => {
+    setSelectedExpiry(label);
+    const exp = expiries.find(e => e.label === label);
+    if (exp) onExpiryChange?.(exp.date);
+  }, [expiries, onExpiryChange]);
 
   const selectedExpiryObj = expiries.find((e) => e.label === selectedExpiry);
   const daysToExpiry = selectedExpiryObj ? getDaysToExpiry(selectedExpiryObj.date) : 5;
@@ -115,16 +129,123 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     setSelectedSymbol(symbol);
     setShowStockPanel(false);
     setStockSearch("");
+    setLiveData(null);
+    setLiveSpot(null);
     onInstrumentChange?.(symbol);
   }, [onInstrumentChange]);
 
-  // Generate chain data with stable seeded values (not random on every render)
-  const chainData = useMemo(() => {
+  // Fetch live option chain data from broker
+  const fetchLiveChain = useCallback(async () => {
+    if (!isConnected || !instrument || !selectedExpiryObj) return;
+
+    try {
+      const spot = getDefaultSpotPrice(selectedSymbol);
+      const atmStrike = Math.round(spot / strikeStep) * strikeStep;
+
+      // Try fetching spot price from broker
+      if (instrument.type === "index" && (instrument as any).spotToken) {
+        try {
+          const spotExchange = (instrument as any).exchange === "BFO" ? "BSE" : "NSE";
+          const spotData = await getMarketData((instrument as any).spotToken, spotExchange);
+          if (spotData?.lp) {
+            setLiveSpot(parseFloat(spotData.lp));
+          }
+        } catch {
+          // Use default spot if market data fails
+        }
+      }
+
+      // Fetch option chain
+      const expiryStr = formatExpiryForSymbol(selectedExpiryObj.date);
+      const chainResult = await getOptionChain(selectedSymbol, atmStrike, 15);
+
+      if (chainResult && Array.isArray(chainResult.values || chainResult)) {
+        const values = chainResult.values || chainResult;
+        const rowMap = new Map<number, Partial<OptionRow>>();
+
+        for (const item of values) {
+          const strike = parseFloat(item.strprc);
+          if (isNaN(strike)) continue;
+
+          if (!rowMap.has(strike)) {
+            rowMap.set(strike, { strike });
+          }
+          const row = rowMap.get(strike)!;
+          const lp = parseFloat(item.lp || "0");
+          const oi = parseInt(item.oi || "0", 10);
+          const vol = parseInt(item.v || "0", 10);
+
+          if (item.optt === "CE") {
+            row.callLTP = lp;
+            row.callOI = oi;
+            row.callVolume = vol;
+            row.callTsym = item.tsym;
+          } else if (item.optt === "PE") {
+            row.putLTP = lp;
+            row.putOI = oi;
+            row.putVolume = vol;
+            row.putTsym = item.tsym;
+          }
+        }
+
+        const currentSpot = liveSpot || spot;
+        const rows: OptionRow[] = Array.from(rowMap.values())
+          .filter(r => r.strike !== undefined)
+          .map(r => {
+            const s = r.strike!;
+            const callIV = r.callLTP ? Math.max(5, 15 + Math.abs(currentSpot - s) / currentSpot * 50) : 15;
+            const putIV = r.putLTP ? Math.max(5, 15 + Math.abs(currentSpot - s) / currentSpot * 50) : 15;
+            const callGreeks = calcGreeks(currentSpot, s, callIV, daysToExpiry, true);
+            const putGreeks = calcGreeks(currentSpot, s, putIV, daysToExpiry, false);
+            return {
+              strike: s,
+              callLTP: r.callLTP || 0,
+              callIV, callDelta: callGreeks.delta, callGamma: callGreeks.gamma,
+              callTheta: callGreeks.theta, callVega: callGreeks.vega,
+              callOI: r.callOI || 0, callVolume: r.callVolume || 0,
+              putLTP: r.putLTP || 0,
+              putIV, putDelta: putGreeks.delta, putGamma: putGreeks.gamma,
+              putTheta: putGreeks.theta, putVega: putGreeks.vega,
+              putOI: r.putOI || 0, putVolume: r.putVolume || 0,
+              callTsym: r.callTsym, putTsym: r.putTsym,
+            };
+          })
+          .sort((a, b) => a.strike - b.strike);
+
+        if (rows.length > 0) {
+          setLiveData(rows);
+          setIsLive(true);
+        }
+      }
+    } catch (err: any) {
+      console.error("Live chain fetch error:", err.message);
+      setIsLive(false);
+    }
+  }, [isConnected, instrument, selectedSymbol, selectedExpiryObj, strikeStep, daysToExpiry, liveSpot, getOptionChain, getMarketData]);
+
+  // Poll every 1 second when connected
+  useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    if (isConnected && selectedExpiryObj) {
+      fetchLiveChain(); // Initial fetch
+      pollRef.current = setInterval(fetchLiveChain, 1000);
+    } else {
+      setIsLive(false);
+      setLiveData(null);
+    }
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isConnected, selectedSymbol, selectedExpiry, fetchLiveChain]);
+
+  // Mock data fallback
+  const mockChainData = useMemo(() => {
     const spot = getDefaultSpotPrice(selectedSymbol);
     const step = strikeStep;
     const start = Math.round((spot - 15 * step) / step) * step;
     const rows: OptionRow[] = [];
-    // Seed-based pseudo-random for stable data
     const seed = (n: number) => {
       const x = Math.sin(n * 9301 + 49297) * 49297;
       return x - Math.floor(x);
@@ -156,33 +277,34 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     return { rows, spot };
   }, [selectedSymbol, strikeStep, daysToExpiry]);
 
+  const chainData = useMemo(() => {
+    if (liveData && liveData.length > 0) {
+      return { rows: liveData, spot: liveSpot || getDefaultSpotPrice(selectedSymbol) };
+    }
+    return mockChainData;
+  }, [liveData, liveSpot, selectedSymbol, mockChainData]);
+
   // Analytics
   const analytics = useMemo(() => {
     const rows = chainData.rows;
     const totalCallOI = rows.reduce((s, r) => s + r.callOI, 0);
     const totalPutOI = rows.reduce((s, r) => s + r.putOI, 0);
     const pcr = totalCallOI > 0 ? totalPutOI / totalCallOI : 0;
-
-    // Max pain: strike where total option buyers lose most
     let maxPainStrike = rows[0]?.strike || 0;
     let minPain = Infinity;
     for (const row of rows) {
       let pain = 0;
       for (const r of rows) {
-        pain += Math.max(0, row.strike - r.strike) * r.callOI; // call buyers lose
-        pain += Math.max(0, r.strike - row.strike) * r.putOI;  // put buyers lose
+        pain += Math.max(0, row.strike - r.strike) * r.callOI;
+        pain += Math.max(0, r.strike - row.strike) * r.putOI;
       }
       if (pain < minPain) { minPain = pain; maxPainStrike = row.strike; }
     }
-
-    // Max OI strikes
     const maxCallOIStrike = rows.reduce((m, r) => r.callOI > m.oi ? { strike: r.strike, oi: r.callOI } : m, { strike: 0, oi: 0 });
     const maxPutOIStrike = rows.reduce((m, r) => r.putOI > m.oi ? { strike: r.strike, oi: r.putOI } : m, { strike: 0, oi: 0 });
-
     return { pcr, maxPainStrike, maxCallOIStrike, maxPutOIStrike, totalCallOI, totalPutOI };
   }, [chainData]);
 
-  // OI heatmap intensity
   const maxOI = useMemo(() => Math.max(...chainData.rows.map((r) => Math.max(r.callOI, r.putOI)), 1), [chainData]);
 
   const filteredStocks = useMemo(() => {
@@ -198,7 +320,22 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
         <div className="px-5 py-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">{selectedSymbol} Options Chain</h3>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                {selectedSymbol} Options Chain
+                {isLive ? (
+                  <span className="flex items-center gap-1 text-[10px] text-profit font-normal">
+                    <Wifi className="w-3 h-3" /> LIVE
+                  </span>
+                ) : isConnected ? (
+                  <span className="flex items-center gap-1 text-[10px] text-warning font-normal">
+                    <WifiOff className="w-3 h-3" /> Connecting...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground font-normal">
+                    Mock Data
+                  </span>
+                )}
+              </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Spot: <span className="font-mono text-primary">₹{chainData.spot.toLocaleString("en-IN")}</span>
                 {instrument && <span className="ml-2">· Lot: {instrument.lotSize} · DTE: {daysToExpiry}d</span>}
@@ -236,7 +373,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
             </TabsContent>
 
             <TabsContent value="stock" className="mt-2 space-y-2">
-              {/* Favorites */}
               {favorites.filter((f) => FNO_STOCKS.some((s) => s.symbol === f)).length > 0 && (
                 <div className="flex items-center gap-1 flex-wrap">
                   <Star className="w-3 h-3 text-warning fill-warning" />
@@ -249,7 +385,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
                 </div>
               )}
 
-              {/* Volume Leaders */}
               <div className="flex items-center gap-1 flex-wrap">
                 <TrendingUp className="w-3 h-3 text-profit" />
                 <span className="text-[9px] text-muted-foreground uppercase tracking-wider mr-1">Vol Leaders</span>
@@ -261,7 +396,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
                 ))}
               </div>
 
-              {/* Search */}
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input type="text" placeholder="Search F&O stocks..." value={stockSearch} onChange={(e) => { setStockSearch(e.target.value); setShowStockPanel(true); }}
@@ -292,12 +426,12 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
           {/* Expiry */}
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Expiry</span>
-            <ExpirySelector expiries={expiries} selected={selectedExpiry} onSelect={setSelectedExpiry} />
+            <ExpirySelector expiries={expiries} selected={selectedExpiry} onSelect={handleExpirySelect} />
           </div>
         </div>
       </div>
 
-      {/* Analytics Bar: PCR, Max Pain, OI */}
+      {/* Analytics Bar */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <div className="glass-card rounded-xl px-4 py-3">
           <p className="text-[9px] text-muted-foreground uppercase tracking-wider">PCR (OI)</p>
@@ -327,7 +461,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
             <span className="text-xs font-mono text-profit">{formatNum(analytics.totalCallOI)} CE</span>
             <span className="text-xs font-mono text-loss">{formatNum(analytics.totalPutOI)} PE</span>
           </div>
-          {/* Mini OI bar */}
           <div className="flex h-1.5 rounded-full overflow-hidden mt-1.5 bg-muted">
             <div className="bg-profit h-full" style={{ width: `${(analytics.totalCallOI / (analytics.totalCallOI + analytics.totalPutOI)) * 100}%` }} />
             <div className="bg-loss h-full" style={{ width: `${(analytics.totalPutOI / (analytics.totalCallOI + analytics.totalPutOI)) * 100}%` }} />
@@ -368,9 +501,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
 
                 return (
                   <tr key={row.strike} className={cn("data-row", isATM && "bg-primary/5 border-l-2 border-r-2 border-primary/30")}>
-                    {/* Call Volume */}
                     <td className={cn("text-right px-2 py-2 font-mono text-[10px] text-muted-foreground", isITMCall && "bg-success/5")}>{formatNum(row.callVolume)}</td>
-                    {/* Call OI with heatmap */}
                     <td className={cn("text-right px-2 py-2 font-mono", isITMCall && "bg-success/5")}
                       style={{ backgroundColor: `hsl(var(--chart-profit) / ${Math.min(0.2, callOIIntensity * 0.2)})` }}>
                       {formatNum(row.callOI)}
@@ -388,7 +519,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
                         {row.callLTP.toFixed(2)}
                       </div>
                     </td>
-                    {/* Strike */}
                     <td className={cn("text-center px-2 py-2 font-mono font-bold text-foreground bg-secondary/20 sticky left-0 z-10",
                       isMaxPain && "ring-1 ring-primary/50")}>
                       <div className="flex items-center justify-center gap-1">
@@ -396,7 +526,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
                         {isMaxPain && <Activity className="w-2.5 h-2.5 text-primary" />}
                       </div>
                     </td>
-                    {/* Put LTP */}
                     <td className={cn("text-right px-2 py-2 font-mono font-semibold cursor-pointer transition-colors", isITMPut && "bg-destructive/5",
                         putSelected ? "text-primary bg-primary/10" : "text-foreground hover:text-primary hover:bg-primary/5")}
                       onClick={() => onStrikeSelect?.(row.strike, "PE", row.putLTP)}>
@@ -410,7 +539,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
                     <td className={cn("text-right px-2 py-2 font-mono text-muted-foreground", isITMPut && "bg-destructive/5")}>{row.putGamma.toFixed(4)}</td>
                     <td className={cn("text-right px-2 py-2 font-mono text-loss", isITMPut && "bg-destructive/5")}>{row.putTheta.toFixed(2)}</td>
                     <td className={cn("text-right px-2 py-2 font-mono text-muted-foreground", isITMPut && "bg-destructive/5")}>{row.putVega.toFixed(2)}</td>
-                    {/* Put OI with heatmap */}
                     <td className={cn("text-right px-2 py-2 font-mono", isITMPut && "bg-destructive/5")}
                       style={{ backgroundColor: `hsl(var(--chart-loss) / ${Math.min(0.2, putOIIntensity * 0.2)})` }}>
                       {formatNum(row.putOI)}

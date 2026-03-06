@@ -15,6 +15,7 @@ export interface SelectedLeg {
 const Options = () => {
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [instrument, setInstrument] = useState("NIFTY");
+  const [expiryDate, setExpiryDate] = useState<Date | undefined>();
   const inst = getInstrument(instrument);
   const defaultLot = inst?.lotSize || 25;
   const [qty, setQty] = useState(defaultLot);
@@ -49,6 +50,10 @@ const Options = () => {
     setQty(newInst?.lotSize || 25);
   }, []);
 
+  const handleExpiryChange = useCallback((date: Date) => {
+    setExpiryDate(date);
+  }, []);
+
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
@@ -65,6 +70,7 @@ const Options = () => {
               onStrikeSelect={handleStrikeSelect}
               selectedStrikes={selectedLegs.map((l) => ({ strike: l.strike, type: l.type }))}
               onInstrumentChange={handleInstrumentChange}
+              onExpiryChange={handleExpiryChange}
             />
             {selectedLegs.length > 0 && (
               <PayoffChart legs={selectedLegs} instrument={instrument} qty={qty} />
@@ -80,6 +86,7 @@ const Options = () => {
               instrument={instrument}
               qty={qty}
               onQtyChange={setQty}
+              expiryDate={expiryDate}
             />
           </div>
         </div>

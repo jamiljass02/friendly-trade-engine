@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useBroker } from "@/hooks/useBroker";
 import { useToast } from "@/hooks/use-toast";
 import { getInstrument, getDefaultSpotPrice } from "@/lib/instruments";
+import { formatExpiryForSymbol } from "@/lib/expiry-utils";
 
 interface SelectedLeg {
   strike: number;
@@ -22,6 +23,7 @@ interface StrategyExecutorProps {
   instrument: string;
   qty?: number;
   onQtyChange?: (qty: number) => void;
+  expiryDate?: Date;
 }
 
 const StrategyExecutor = ({
@@ -32,8 +34,9 @@ const StrategyExecutor = ({
   instrument,
   qty: externalQty,
   onQtyChange,
+  expiryDate,
 }: StrategyExecutorProps) => {
-  const { isConnected, placeOrder } = useBroker();
+  const { isConnected, placeOrder, searchScrip } = useBroker();
   const { toast } = useToast();
   const inst = getInstrument(instrument);
   const defaultLot = inst?.lotSize || 25;
@@ -64,13 +67,10 @@ const StrategyExecutor = ({
   })();
 
   const strategyLabel =
-    strategyType === "straddle"
-      ? "Straddle"
-      : strategyType === "strangle"
-      ? "Strangle"
-      : strategyType === "iron_condor"
-      ? "Iron Condor"
-      : `Custom (${selectedLegs.length} legs)`;
+    strategyType === "straddle" ? "Straddle"
+    : strategyType === "strangle" ? "Strangle"
+    : strategyType === "iron_condor" ? "Iron Condor"
+    : `Custom (${selectedLegs.length} legs)`;
 
   const netPremium = selectedLegs.reduce((sum, l) => {
     const val = l.ltp * qty;
@@ -82,27 +82,65 @@ const StrategyExecutor = ({
     selectedLegs.filter((l) => l.action === "SELL").length * qty * spotPrice * 0.15
   );
 
+  // Build the correct Shoonya trading symbol
+  const buildTradingSymbol = useCallback((leg: SelectedLeg): string => {
+    if (!expiryDate) {
+      // Fallback: use current nearest Thursday
+      const now = new Date();
+      const day = now.getDate();
+      const month = now.toLocaleString("en", { month: "short" }).toUpperCase();
+      const year = now.getFullYear().toString().slice(-2);
+      return `${instrument}${String(day).padStart(2, "0")}${month}${year}${leg.type === "CE" ? "C" : "P"}${leg.strike}`;
+    }
+    const expiryStr = formatExpiryForSymbol(expiryDate);
+    return `${instrument}${expiryStr}${leg.type === "CE" ? "C" : "P"}${leg.strike}`;
+  }, [instrument, expiryDate]);
+
   const executeStrategy = useCallback(async () => {
     if (!isConnected || selectedLegs.length === 0) return;
 
     setExecuting(true);
     try {
+      const results: string[] = [];
+
       for (const leg of selectedLegs) {
-        const tsym = `${instrument}27FEB26${leg.type === "CE" ? "C" : "P"}${leg.strike}`;
+        let tsym = buildTradingSymbol(leg);
+
+        // Try to resolve exact trading symbol via search
+        try {
+          const searchResult = await searchScrip(tsym, inst?.exchange || "NFO");
+          if (searchResult?.values && searchResult.values.length > 0) {
+            // Find best match
+            const match = searchResult.values.find((v: any) =>
+              v.tsym?.includes(String(leg.strike)) &&
+              v.tsym?.includes(leg.type === "CE" ? "C" : "P")
+            );
+            if (match?.tsym) {
+              tsym = match.tsym;
+            }
+          }
+        } catch {
+          console.log("Search scrip failed, using constructed symbol:", tsym);
+        }
+
+        console.log(`Placing order: ${leg.action} ${tsym} qty=${qty} price=${leg.ltp}`);
+
         await placeOrder({
           tradingsymbol: tsym,
           quantity: qty,
-          price: leg.ltp,
+          price: 0, // Market order - price 0
           transaction_type: leg.action === "BUY" ? "B" : "S",
           order_type: "MKT",
           product: "M",
           exchange: inst?.exchange || "NFO",
         });
+
+        results.push(`${leg.action} ${tsym}`);
       }
 
       toast({
-        title: "Strategy Executed",
-        description: `${strategyLabel} placed successfully with ${selectedLegs.length} legs`,
+        title: "Strategy Executed ✓",
+        description: `${strategyLabel} placed: ${results.join(", ")}`,
       });
       onClearAll();
     } catch (err: any) {
@@ -114,7 +152,7 @@ const StrategyExecutor = ({
     } finally {
       setExecuting(false);
     }
-  }, [isConnected, selectedLegs, qty, instrument, inst, placeOrder, toast, onClearAll, strategyLabel]);
+  }, [isConnected, selectedLegs, qty, instrument, inst, placeOrder, searchScrip, toast, onClearAll, strategyLabel, buildTradingSymbol]);
 
   if (selectedLegs.length === 0) {
     return (
@@ -134,12 +172,10 @@ const StrategyExecutor = ({
           <h3 className="text-sm font-semibold text-foreground">{strategyLabel}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             {selectedLegs.length} leg{selectedLegs.length > 1 ? "s" : ""} · {instrument}
+            {expiryDate && <span className="ml-1">· {expiryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>}
           </p>
         </div>
-        <button
-          onClick={onClearAll}
-          className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-        >
+        <button onClick={onClearAll} className="text-xs text-muted-foreground hover:text-destructive transition-colors">
           Clear All
         </button>
       </div>
@@ -147,46 +183,25 @@ const StrategyExecutor = ({
       {/* Legs */}
       <div className="p-4 space-y-2">
         {selectedLegs.map((leg) => (
-          <div
-            key={`${leg.strike}-${leg.type}`}
-            className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30"
-          >
+          <div key={`${leg.strike}-${leg.type}`}
+            className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/30">
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => onToggleAction(leg.strike, leg.type)}
-                className={cn(
-                  "text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1",
-                  leg.action === "SELL"
-                    ? "bg-destructive/10 text-loss hover:bg-destructive/20"
-                    : "bg-success/10 text-profit hover:bg-success/20"
-                )}
-                title="Click to toggle BUY/SELL"
-              >
+              <button onClick={() => onToggleAction(leg.strike, leg.type)}
+                className={cn("text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1",
+                  leg.action === "SELL" ? "bg-destructive/10 text-loss hover:bg-destructive/20" : "bg-success/10 text-profit hover:bg-success/20"
+                )} title="Click to toggle BUY/SELL">
                 <ArrowUpDown className="w-2.5 h-2.5" />
                 {leg.action}
               </button>
-              <span
-                className={cn(
-                  "text-[10px] font-bold px-1.5 py-0.5 rounded",
-                  leg.type === "CE"
-                    ? "bg-success/10 text-profit"
-                    : "bg-destructive/10 text-loss"
-                )}
-              >
-                {leg.type}
-              </span>
-              <span className="font-mono text-sm font-semibold text-foreground">
-                {leg.strike}
-              </span>
+              <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded",
+                leg.type === "CE" ? "bg-success/10 text-profit" : "bg-destructive/10 text-loss"
+              )}>{leg.type}</span>
+              <span className="font-mono text-sm font-semibold text-foreground">{leg.strike}</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="font-mono text-xs text-foreground">
-                ₹{leg.ltp.toFixed(2)}
-              </span>
-              <button
-                onClick={() => onRemoveLeg(leg.strike, leg.type)}
-                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-              >
+              <span className="font-mono text-xs text-foreground">₹{leg.ltp.toFixed(2)}</span>
+              <button onClick={() => onRemoveLeg(leg.strike, leg.type)}
+                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -199,27 +214,17 @@ const StrategyExecutor = ({
         <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
           Quantity (Lot: {defaultLot})
         </label>
-        <input
-          type="number"
-          value={qty}
-          onChange={(e) => setQty(Number(e.target.value))}
-          step={defaultLot}
-          min={defaultLot}
-          className="mt-1 w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-mono"
-        />
+        <input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))}
+          step={defaultLot} min={defaultLot}
+          className="mt-1 w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-mono" />
       </div>
 
       {/* Summary */}
       <div className="px-5 py-4 border-t border-border/50 bg-secondary/20">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Net Premium
-            </p>
-            <p className={cn(
-              "text-sm font-mono font-semibold mt-1",
-              netPremium >= 0 ? "text-profit" : "text-loss"
-            )}>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Net Premium</p>
+            <p className={cn("text-sm font-mono font-semibold mt-1", netPremium >= 0 ? "text-profit" : "text-loss")}>
               {netPremium >= 0 ? "+" : ""}₹{Math.abs(netPremium).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
               <span className="text-[10px] font-normal text-muted-foreground ml-1">
                 {netPremium >= 0 ? "credit" : "debit"}
@@ -227,9 +232,7 @@ const StrategyExecutor = ({
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Margin (est.)
-            </p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Margin (est.)</p>
             <p className="text-sm font-mono font-semibold text-foreground mt-1">
               ₹{marginRequired.toLocaleString("en-IN")}
             </p>
@@ -245,16 +248,9 @@ const StrategyExecutor = ({
             Connect broker to execute
           </div>
         ) : (
-          <button
-            onClick={executeStrategy}
-            disabled={executing}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors glow-primary disabled:opacity-50"
-          >
-            {executing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4" />
-            )}
+          <button onClick={executeStrategy} disabled={executing}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors glow-primary disabled:opacity-50">
+            {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             {executing ? "Executing..." : "Execute Strategy"}
           </button>
         )}

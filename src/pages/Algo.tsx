@@ -550,56 +550,114 @@ const Algo = () => {
                   <CardContent className="px-4 pb-4">
                     <div className="space-y-2">
                       {/* Column Headers */}
-                      <div className="grid grid-cols-[40px_70px_60px_80px_120px_65px_100px_32px] gap-2 text-[9px] text-muted-foreground uppercase tracking-wider px-1">
-                        <span>Leg</span>
-                        <span>Segment</span>
-                        <span>B/S</span>
-                        <span>Type</span>
-                        <span>Strike/Contract</span>
-                        <span>Lots</span>
-                        <span>Expiry</span>
-                        <span></span>
+                      <div className="flex items-center gap-2 text-[9px] text-muted-foreground uppercase tracking-wider px-2">
+                        <span className="w-8">Leg</span>
+                        <span className="w-[70px]">Segment</span>
+                        <span className="w-[90px]">Expiry</span>
+                        <span className="w-[85px]">Strike Mode</span>
+                        <span className="w-[90px]">Strike</span>
+                        <span className="w-[50px]">Type</span>
+                        <span className="w-[50px]">Lot</span>
+                        <span className="w-[55px]">Action</span>
+                        <span className="w-[65px]">Stop Loss</span>
+                        <span className="w-[70px]">Take Profit</span>
+                        <span className="w-6"></span>
                       </div>
 
                       {editingStrategy.legs.map((leg, i) => (
-                        <div key={leg.id} className="space-y-2">
+                        <div key={leg.id} className="space-y-1">
                           <div
                             className={cn(
-                              "grid grid-cols-[40px_70px_60px_80px_120px_65px_100px_32px] gap-2 items-center p-2 rounded-lg border transition-colors",
+                              "flex items-center gap-2 p-2 rounded-lg border transition-colors",
                               leg.side === "BUY" ? "border-success/20 bg-success/5" : "border-destructive/20 bg-destructive/5"
                             )}
                           >
-                            <div className="flex items-center gap-1">
-                              <GripVertical className="w-3 h-3 text-muted-foreground/40" />
-                              <span className="text-xs font-mono text-muted-foreground">L{i + 1}</span>
-                            </div>
+                            {/* Leg Label */}
+                            <Badge variant="secondary" className="text-[9px] px-1.5 py-0.5 shrink-0 w-8 justify-center">
+                              L{i + 1}
+                            </Badge>
 
+                            {/* Segment */}
                             <select
                               value={leg.segment}
                               onChange={(e) => updateLeg(leg.id, { segment: e.target.value as any })}
-                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
+                              className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[70px]"
                             >
-                              <option value="OPT">Options</option>
-                              <option value="FUT">Futures</option>
+                              <option value="OPT">Option</option>
+                              <option value="FUT">Future</option>
                             </select>
 
-                            <button
-                              onClick={() => updateLeg(leg.id, { side: leg.side === "BUY" ? "SELL" : "BUY" })}
-                              className={cn(
-                                "text-[11px] font-bold py-1 rounded border text-center",
-                                leg.side === "BUY"
-                                  ? "bg-success/20 text-profit border-success/30"
-                                  : "bg-destructive/20 text-loss border-destructive/30"
-                              )}
-                            >
-                              {leg.side}
-                            </button>
+                            {/* Expiry */}
+                            {leg.segment === "OPT" ? (
+                              <select
+                                value={leg.expiry}
+                                onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[90px]"
+                              >
+                                <option value="current_week">Current Week</option>
+                                <option value="next_week">Next Week</option>
+                                <option value="current_month">Current Month</option>
+                                <option value="next_month">Next Month</option>
+                                <option value="custom">Custom</option>
+                              </select>
+                            ) : (
+                              <select
+                                value={leg.expiry}
+                                onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[90px]"
+                              >
+                                <option value="current_month">Near Month</option>
+                                <option value="next_month">Mid Month</option>
+                                <option value="far_month">Far Month</option>
+                              </select>
+                            )}
 
+                            {/* Strike Mode (only for options) */}
+                            {leg.segment === "OPT" ? (
+                              <select
+                                value={leg.strikeMode || "spot_based"}
+                                onChange={(e) => updateLeg(leg.id, { strikeMode: e.target.value as any })}
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[85px]"
+                              >
+                                <option value="spot_based">Spot Based</option>
+                                <option value="premium_based">Premium Based</option>
+                              </select>
+                            ) : (
+                              <span className="w-[85px] text-[10px] text-muted-foreground text-center">—</span>
+                            )}
+
+                            {/* Strike Selection */}
+                            {leg.segment === "OPT" ? (
+                              leg.strikeMode === "premium_based" ? (
+                                <div className="flex items-center gap-1 w-[90px]">
+                                  <span className="text-[9px] text-muted-foreground">₹</span>
+                                  <input
+                                    type="number"
+                                    value={leg.premiumMin ?? ""}
+                                    onChange={(e) => updateLeg(leg.id, { premiumMin: Number(e.target.value) })}
+                                    placeholder="Premium"
+                                    className="w-full bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 font-mono"
+                                  />
+                                </div>
+                              ) : (
+                                <select
+                                  value={leg.strikeSelection}
+                                  onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value })}
+                                  className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[90px]"
+                                >
+                                  {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                              )
+                            ) : (
+                              <span className="w-[90px] text-[10px] text-muted-foreground text-center">—</span>
+                            )}
+
+                            {/* CE/PE Toggle */}
                             {leg.segment === "OPT" ? (
                               <button
                                 onClick={() => updateLeg(leg.id, { optionType: leg.optionType === "CE" ? "PE" : "CE" })}
                                 className={cn(
-                                  "text-[11px] font-bold py-1 rounded border text-center transition-colors",
+                                  "text-[11px] font-bold py-1.5 rounded border text-center w-[50px] transition-colors",
                                   leg.optionType === "CE"
                                     ? "bg-success/20 text-profit border-success/30"
                                     : "bg-destructive/20 text-loss border-destructive/30"
@@ -608,122 +666,81 @@ const Algo = () => {
                                 {leg.optionType}
                               </button>
                             ) : (
-                              <span className="text-[11px] text-muted-foreground text-center">FUT</span>
+                              <span className="w-[50px] text-[10px] text-muted-foreground text-center">FUT</span>
                             )}
 
-                            {leg.segment === "OPT" ? (
-                              <select
-                                value={leg.strikeSelection}
-                                onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value })}
-                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                              >
-                                {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                              </select>
-                            ) : (
-                              <select
-                                value={leg.expiry}
-                                onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
-                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                              >
-                                <option value="current_month">Month 1 (Near)</option>
-                                <option value="next_month">Month 2 (Mid)</option>
-                                <option value="far_month">Month 3 (Far)</option>
-                              </select>
-                            )}
-
+                            {/* Lots */}
                             <input
                               type="number"
                               value={leg.lots}
                               onChange={(e) => updateLeg(leg.id, { lots: Math.max(1, Number(e.target.value)) })}
                               min={1}
-                              className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono w-full"
+                              className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 font-mono w-[50px] text-center"
                             />
 
-                            {leg.segment === "OPT" && (
-                              <select
-                                value={leg.expiry}
-                                onChange={(e) => updateLeg(leg.id, { expiry: e.target.value as any })}
-                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                              >
-                                <option value="current_week">Current Wk</option>
-                                <option value="next_week">Next Wk</option>
-                                <option value="current_month">Current Mo</option>
-                                <option value="next_month">Next Mo</option>
-                                <option value="custom">Custom</option>
-                              </select>
-                            )}
+                            {/* Action */}
+                            <button
+                              onClick={() => updateLeg(leg.id, { side: leg.side === "BUY" ? "SELL" : "BUY" })}
+                              className={cn(
+                                "text-[11px] font-bold py-1.5 rounded border text-center w-[55px] transition-colors",
+                                leg.side === "BUY"
+                                  ? "bg-success/20 text-profit border-success/30"
+                                  : "bg-destructive/20 text-loss border-destructive/30"
+                              )}
+                            >
+                              {leg.side === "BUY" ? "Buy" : "Sell"}
+                            </button>
 
+                            {/* Stop Loss % */}
+                            <div className="flex items-center w-[65px]">
+                              <input
+                                type="number"
+                                value={leg.stopLossPct ?? ""}
+                                onChange={(e) => updateLeg(leg.id, { stopLossPct: Number(e.target.value) || undefined })}
+                                placeholder="SL"
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded-l border border-border/50 font-mono w-full text-center"
+                              />
+                              <span className="text-[10px] text-muted-foreground bg-muted border border-l-0 border-border/50 rounded-r px-1 py-1.5">%</span>
+                            </div>
+
+                            {/* Take Profit % */}
+                            <div className="flex items-center w-[70px]">
+                              <input
+                                type="number"
+                                value={leg.takeProfitPct ?? ""}
+                                onChange={(e) => updateLeg(leg.id, { takeProfitPct: Number(e.target.value) || undefined })}
+                                placeholder="TP"
+                                className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded-l border border-border/50 font-mono w-full text-center"
+                              />
+                              <span className="text-[10px] text-muted-foreground bg-muted border border-l-0 border-border/50 rounded-r px-1 py-1.5">%</span>
+                            </div>
+
+                            {/* Delete */}
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="w-6 h-6"
+                              className="w-6 h-6 shrink-0"
                               onClick={() => removeLeg(leg.id)}
                               disabled={editingStrategy.legs.length <= 1}
                             >
-                              <X className="w-3 h-3 text-muted-foreground" />
+                              <Trash2 className="w-3 h-3 text-muted-foreground" />
                             </Button>
                           </div>
-
-                          {/* Premium Filter Row */}
-                          {leg.segment === "OPT" && (
-                            <div className="flex items-center gap-2 px-2 ml-10 flex-wrap">
-                              <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0">Premium:</span>
-                              <select
-                                value={leg.premiumMode || "none"}
-                                onChange={(e) => updateLeg(leg.id, { premiumMode: e.target.value as any })}
-                                className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                              >
-                                {premiumModes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                              </select>
-
-                              {leg.premiumMode && leg.premiumMode !== "none" && (
-                                <>
-                                  <span className="text-[10px] text-muted-foreground">₹</span>
-                                  <input
-                                    type="number"
-                                    value={leg.premiumMin ?? ""}
-                                    onChange={(e) => updateLeg(leg.id, { premiumMin: Number(e.target.value) })}
-                                    placeholder={leg.premiumMode === "between" ? "Min" : "Value"}
-                                    className="w-16 bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono"
-                                  />
-                                  {leg.premiumMode === "between" && (
-                                    <>
-                                      <span className="text-[10px] text-muted-foreground">to ₹</span>
-                                      <input
-                                        type="number"
-                                        value={leg.premiumMax ?? ""}
-                                        onChange={(e) => updateLeg(leg.id, { premiumMax: Number(e.target.value) })}
-                                        placeholder="Max"
-                                        className="w-16 bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50 font-mono"
-                                      />
-                                    </>
-                                  )}
-                                </>
-                              )}
-
-                              {leg.expiry === "custom" && (
-                                <>
-                                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0 ml-2">Date:</span>
-                                  <input
-                                    type="date"
-                                    value={leg.customExpiry || ""}
-                                    onChange={(e) => updateLeg(leg.id, { customExpiry: e.target.value })}
-                                    className="bg-muted text-foreground text-[11px] px-1.5 py-1 rounded border border-border/50"
-                                  />
-                                </>
-                              )}
-                            </div>
-                          )}
                         </div>
                       ))}
                     </div>
 
-                    {/* Lot Size Info */}
-                    <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
-                      <span>Lot size: <span className="font-mono text-foreground">{lotSizes[editingStrategy.instrument] || 50}</span></span>
-                      <span>Total qty: <span className="font-mono text-foreground">
-                        {editingStrategy.legs.reduce((s, l) => s + l.lots, 0) * (lotSizes[editingStrategy.instrument] || 50)}
-                      </span></span>
+                    {/* Add Leg + Lot Info */}
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+                        <span>Lot size: <span className="font-mono text-foreground">{lotSizes[editingStrategy.instrument] || 50}</span></span>
+                        <span>Total qty: <span className="font-mono text-foreground">
+                          {editingStrategy.legs.reduce((s, l) => s + l.lots, 0) * (lotSizes[editingStrategy.instrument] || 50)}
+                        </span></span>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={addLeg} className="h-7 text-xs gap-1">
+                        <PlusCircle className="w-3 h-3" /> Add Leg
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

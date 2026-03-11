@@ -46,8 +46,8 @@ const templates: Template[] = [
       const atm = Math.round(spot / step) * step;
       const expiry = makeExpiry("NIFTY");
       return [
-        { underlying: "NIFTY", instrumentType: "index_option", action: "SELL", optionType: "CE", strike: atm, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm, true) },
-        { underlying: "NIFTY", instrumentType: "index_option", action: "SELL", optionType: "PE", strike: atm, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm, false) },
+        { ...SM, underlying: "NIFTY", instrumentType: "index_option", action: "SELL", optionType: "CE", strike: atm, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm, true) },
+        { ...SM, underlying: "NIFTY", instrumentType: "index_option", action: "SELL", optionType: "PE", strike: atm, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm, false) },
       ];
     },
   },
@@ -62,10 +62,10 @@ const templates: Template[] = [
       const atm = Math.round(spot / step) * step;
       const expiry = makeExpiry("BANKNIFTY");
       return [
-        { underlying: "BANKNIFTY", instrumentType: "index_option", action: "SELL", optionType: "CE", strike: atm + step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 3, true) },
-        { underlying: "BANKNIFTY", instrumentType: "index_option", action: "BUY", optionType: "CE", strike: atm + step * 5, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 5, true) },
-        { underlying: "BANKNIFTY", instrumentType: "index_option", action: "SELL", optionType: "PE", strike: atm - step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 3, false) },
-        { underlying: "BANKNIFTY", instrumentType: "index_option", action: "BUY", optionType: "PE", strike: atm - step * 5, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 5, false) },
+        { ...SM, underlying: "BANKNIFTY", instrumentType: "index_option", action: "SELL", optionType: "CE", strike: atm + step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 3, true) },
+        { ...SM, underlying: "BANKNIFTY", instrumentType: "index_option", action: "BUY", optionType: "CE", strike: atm + step * 5, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 5, true) },
+        { ...SM, underlying: "BANKNIFTY", instrumentType: "index_option", action: "SELL", optionType: "PE", strike: atm - step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 3, false) },
+        { ...SM, underlying: "BANKNIFTY", instrumentType: "index_option", action: "BUY", optionType: "PE", strike: atm - step * 5, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 5, false) },
       ];
     },
   },
@@ -80,8 +80,8 @@ const templates: Template[] = [
       const atm = Math.round(spot / step) * step;
       const expiry = makeExpiry("NIFTY");
       return [
-        { underlying: "NIFTY", instrumentType: "index_option", action: "BUY", optionType: "CE", strike: atm + step * 4, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 4, true) },
-        { underlying: "NIFTY", instrumentType: "index_option", action: "BUY", optionType: "PE", strike: atm - step * 4, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 4, false) },
+        { ...SM, underlying: "NIFTY", instrumentType: "index_option", action: "BUY", optionType: "CE", strike: atm + step * 4, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 4, true) },
+        { ...SM, underlying: "NIFTY", instrumentType: "index_option", action: "BUY", optionType: "PE", strike: atm - step * 4, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 4, false) },
       ];
     },
   },
@@ -96,8 +96,8 @@ const templates: Template[] = [
       const atm = Math.round(spot / step) * step;
       const expiry = makeExpiry("RELIANCE");
       return [
-        { underlying: "RELIANCE", instrumentType: "stock_future", action: "BUY", futureType: "near" as const, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: spot },
-        { underlying: "RELIANCE", instrumentType: "stock_option", action: "SELL", optionType: "CE", strike: atm + step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 3, true) },
+        { ...SM, underlying: "RELIANCE", instrumentType: "stock_future", action: "BUY", futureType: "near" as const, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: spot },
+        { ...SM, underlying: "RELIANCE", instrumentType: "stock_option", action: "SELL", optionType: "CE", strike: atm + step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 3, true) },
       ];
     },
   },
@@ -112,8 +112,8 @@ const templates: Template[] = [
       const atm = Math.round(spot / step) * step;
       const expiry = makeExpiry("HDFCBANK");
       return [
-        { underlying: "HDFCBANK", instrumentType: "stock_future", action: "BUY", futureType: "near" as const, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: spot },
-        { underlying: "HDFCBANK", instrumentType: "stock_option", action: "BUY", optionType: "PE", strike: atm - step * 5, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 5, false) },
+        { ...SM, underlying: "HDFCBANK", instrumentType: "stock_future", action: "BUY", futureType: "near" as const, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: spot },
+        { ...SM, underlying: "HDFCBANK", instrumentType: "stock_option", action: "BUY", optionType: "PE", strike: atm - step * 5, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm - step * 5, false) },
       ];
     },
   },
@@ -128,8 +128,8 @@ const templates: Template[] = [
       const atm = Math.round(spot / step) * step;
       const expiry = makeExpiry("TCS");
       return [
-        { underlying: "TCS", instrumentType: "stock_option", action: "BUY", optionType: "CE", strike: atm, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm, true) },
-        { underlying: "TCS", instrumentType: "stock_option", action: "SELL", optionType: "CE", strike: atm + step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 3, true) },
+        { ...SM, underlying: "TCS", instrumentType: "stock_option", action: "BUY", optionType: "CE", strike: atm, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm, true) },
+        { ...SM, underlying: "TCS", instrumentType: "stock_option", action: "SELL", optionType: "CE", strike: atm + step * 3, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(spot, atm + step * 3, true) },
       ];
     },
   },
@@ -142,8 +142,8 @@ const templates: Template[] = [
       const spot = getDefaultSpotPrice("NIFTY");
       const expiries = getUpcomingExpiries(true, 4);
       return [
-        { underlying: "NIFTY", instrumentType: "index_future", action: "SELL", futureType: "near" as const, expiry: expiries[0]?.label || "", lots: 1, entryType: "MKT", validity: "DAY", ltp: spot },
-        { underlying: "NIFTY", instrumentType: "index_future", action: "BUY", futureType: "far" as const, expiry: expiries[2]?.label || "", lots: 1, entryType: "MKT", validity: "DAY", ltp: spot + 50 },
+        { ...SM, underlying: "NIFTY", instrumentType: "index_future", action: "SELL", futureType: "near" as const, expiry: expiries[0]?.label || "", lots: 1, entryType: "MKT", validity: "DAY", ltp: spot },
+        { ...SM, underlying: "NIFTY", instrumentType: "index_future", action: "BUY", futureType: "far" as const, expiry: expiries[2]?.label || "", lots: 1, entryType: "MKT", validity: "DAY", ltp: spot + 50 },
       ];
     },
   },
@@ -158,8 +158,8 @@ const templates: Template[] = [
       const niftyATM = Math.round(niftySpot / 50) * 50;
       const expiry = makeExpiry("NIFTY");
       return [
-        { underlying: "RELIANCE", instrumentType: "stock_future", action: "BUY", futureType: "near" as const, expiry: makeExpiry("RELIANCE"), lots: 1, entryType: "MKT", validity: "DAY", ltp: stockSpot },
-        { underlying: "NIFTY", instrumentType: "index_option", action: "BUY", optionType: "PE", strike: niftyATM - 200, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(niftySpot, niftyATM - 200, false) },
+        { ...SM, underlying: "RELIANCE", instrumentType: "stock_future", action: "BUY", futureType: "near" as const, expiry: makeExpiry("RELIANCE"), lots: 1, entryType: "MKT", validity: "DAY", ltp: stockSpot },
+        { ...SM, underlying: "NIFTY", instrumentType: "index_option", action: "BUY", optionType: "PE", strike: niftyATM - 200, expiry, lots: 1, entryType: "MKT", validity: "DAY", ltp: mockLTP(niftySpot, niftyATM - 200, false) },
       ];
     },
   },

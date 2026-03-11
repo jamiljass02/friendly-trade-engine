@@ -32,6 +32,8 @@ function mockLTP(spot: number, strike: number, isCall: boolean): number {
   return Math.round((intrinsic + 20 + Math.random() * 60) * 100) / 100;
 }
 
+const SM = { strikeMode: "spot_based" as const, strikeSelection: "ATM" as const };
+
 const templates: Template[] = [
   {
     name: "Short Straddle (Nifty)",

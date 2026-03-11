@@ -137,8 +137,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Short Straddle",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
-      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [
@@ -152,8 +152,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Short Strangle",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
-      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [
@@ -167,10 +167,10 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Iron Condor",
     instrument: "BANKNIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
-      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
-      { id: "3", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
-      { id: "4", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
+      { id: "3", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
+      { id: "4", segment: "OPT", side: "BUY", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
     exitConditions: [
@@ -185,8 +185,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Calendar Spread",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
-      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "next_week" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "next_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
     exitConditions: [
@@ -200,8 +200,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Bull Put Spread",
     instrument: "NIFTY",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
-      { id: "2", segment: "OPT", side: "BUY", optionType: "PE", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "BUY", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "price_move", operator: ">", value: "0.3" }],
     exitConditions: [
@@ -215,8 +215,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     name: "Expiry Day Straddle",
     instrument: "SENSEX",
     legs: [
-      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
-      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
+      { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [
@@ -252,8 +252,8 @@ const Algo = () => {
     name: "My Strategy",
     instrument: "NIFTY",
     legs: [
-      { id: generateId(), segment: "OPT", side: "SELL", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
-      { id: generateId(), segment: "OPT", side: "SELL", optionType: "PE", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
+      { id: generateId(), segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
+      { id: generateId(), segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
     ],
     entryConditions: [{ id: generateId(), type: "time", operator: ">=", value: "09:20" }],
     exitConditions: [{ id: generateId(), type: "sl_pct", value: "30" }],
@@ -284,7 +284,7 @@ const Algo = () => {
       ...editingStrategy,
       legs: [
         ...editingStrategy.legs,
-        { id: generateId(), segment: "OPT", side: "BUY", optionType: "CE", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
+        { id: generateId(), segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
       ],
     });
   };

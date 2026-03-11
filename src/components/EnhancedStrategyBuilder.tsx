@@ -36,6 +36,8 @@ export interface StrategyLeg {
   action: "BUY" | "SELL";
   optionType?: "CE" | "PE";
   futureType?: "near" | "mid" | "far";
+  strikeMode: "spot_based" | "premium_based";
+  strikeSelection: string;
   strike?: number;
   expiry: string;
   lots: number;
@@ -43,6 +45,9 @@ export interface StrategyLeg {
   limitPrice?: number;
   validity: "DAY" | "IOC";
   ltp: number;
+  stopLossPct?: number;
+  takeProfitPct?: number;
+  premiumTarget?: number;
 }
 
 type InstrumentFilter = "all" | "index" | "stock";
@@ -175,6 +180,8 @@ const EnhancedStrategyBuilder = () => {
         action: "SELL",
         optionType: isFuture ? undefined : "CE",
         futureType: isFuture ? "near" : undefined,
+        strikeMode: "spot_based",
+        strikeSelection: "ATM",
         strike: isFuture ? undefined : atmStrike,
         expiry: expiries[0]?.label || "",
         lots: 1,
@@ -598,6 +605,23 @@ const EnhancedStrategyBuilder = () => {
 
         {/* Legs */}
         <div className="p-4 space-y-2">
+          {/* Column Headers */}
+          {legs.length > 0 && (
+            <div className="flex items-center gap-2 text-[9px] text-muted-foreground uppercase tracking-wider px-2">
+              <span className="w-8">Leg</span>
+              <span className="w-[75px]">Segment</span>
+              <span className="w-[90px]">Expiry</span>
+              <span className="w-[85px]">Strike Mode</span>
+              <span className="w-[90px]">Strike</span>
+              <span className="w-[50px]">Type</span>
+              <span className="w-[50px]">Lot</span>
+              <span className="w-[55px]">Action</span>
+              <span className="w-[65px]">Stop Loss</span>
+              <span className="w-[70px]">Take Profit</span>
+              <span className="w-6"></span>
+            </div>
+          )}
+
           {legs.length === 0 ? (
             <div className="py-8 text-center">
               <Target className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
@@ -615,131 +639,51 @@ const EnhancedStrategyBuilder = () => {
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
               const expiries = getUpcomingExpiries(isWeekly, 4);
 
-              // Generate strike list
-              const strikes: number[] = [];
-              if (!isFuture) {
-                const atmStrike = Math.round(spot / step) * step;
-                for (let j = -10; j <= 10; j++) {
-                  strikes.push(atmStrike + j * step);
-                }
-              }
+              // Generate strike options as ATM/ITM/OTM labels
+              const strikeOpts = [
+                "ATM",
+                ...Array.from({ length: 20 }, (_, j) => `ITM ${j + 1}`),
+                ...Array.from({ length: 20 }, (_, j) => `OTM ${j + 1}`),
+              ];
 
               return (
                 <div
                   key={leg.id}
-                  className="rounded-lg bg-secondary/30 border border-border/30 animate-slide-up overflow-hidden"
+                  className={cn(
+                    "flex items-center gap-2 p-2 rounded-lg border transition-colors animate-slide-up",
+                    leg.action === "BUY" ? "border-success/20 bg-success/5" : "border-destructive/20 bg-destructive/5"
+                  )}
                   style={{ animationDelay: `${i * 40}ms` }}
                 >
-                  {/* Leg Header */}
-                  <div className="flex items-center gap-2 px-3 py-2 bg-secondary/20">
-                    <span className="text-[10px] text-muted-foreground font-mono w-5">
-                      L{i + 1}
+                  {/* Leg Label */}
+                  <span className="text-[10px] font-mono text-muted-foreground w-8 text-center shrink-0 bg-muted rounded px-1 py-0.5">
+                    L{i + 1}
+                  </span>
+
+                  {/* Segment: underlying + type */}
+                  <div className="flex items-center gap-1 w-[75px] shrink-0">
+                    <span className="text-[10px] font-semibold text-foreground truncate">{leg.underlying}</span>
+                    <span className={cn("text-[8px] font-medium px-1 py-0.5 rounded", isFuture ? "bg-accent/10 text-accent" : "bg-primary/10 text-primary")}>
+                      {isFuture ? "FUT" : "OPT"}
                     </span>
-                    <span className="text-[10px] font-semibold text-foreground">
-                      {leg.underlying}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[9px] font-medium px-1.5 py-0.5 rounded",
-                        isFuture
-                          ? "bg-accent/10 text-accent"
-                          : "bg-primary/10 text-primary"
-                      )}
-                    >
-                      {isFuture ? "FUTURE" : "OPTION"}
-                    </span>
-                    <div className="ml-auto flex items-center gap-1">
-                      <span className="text-[10px] font-mono text-muted-foreground">
-                        LTP: ₹{leg.ltp.toFixed(2)}
-                      </span>
-                      <button
-                        onClick={() => removeLeg(leg.id)}
-                        className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
                   </div>
 
-                  {/* Leg Config */}
-                  <div className="flex items-center gap-2 px-3 py-2.5 flex-wrap">
-                    {/* Action */}
-                    <button
-                      onClick={() =>
-                        updateLeg(leg.id, {
-                          action: leg.action === "BUY" ? "SELL" : "BUY",
-                        })
-                      }
-                      className={cn(
-                        "text-[10px] font-bold px-2.5 py-1 rounded cursor-pointer transition-colors flex items-center gap-1",
-                        leg.action === "SELL"
-                          ? "bg-destructive/10 text-loss hover:bg-destructive/20"
-                          : "bg-success/10 text-profit hover:bg-success/20"
-                      )}
+                  {/* Expiry */}
+                  {isFuture ? (
+                    <select
+                      value={leg.futureType}
+                      onChange={(e) => updateLeg(leg.id, { futureType: e.target.value as "near" | "mid" | "far" })}
+                      className="bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[90px]"
                     >
-                      <ArrowUpDown className="w-2.5 h-2.5" />
-                      {leg.action}
-                    </button>
-
-                    {/* Option Type or Future Type */}
-                    {!isFuture ? (
-                      <select
-                        value={leg.optionType}
-                        onChange={(e) =>
-                          updateLeg(leg.id, {
-                            optionType: e.target.value as "CE" | "PE",
-                          })
-                        }
-                        className={cn(
-                          "text-[10px] font-bold px-2 py-1 rounded border border-border/50 outline-none bg-muted cursor-pointer",
-                          leg.optionType === "CE"
-                            ? "text-profit"
-                            : "text-loss"
-                        )}
-                      >
-                        <option value="CE">CE</option>
-                        <option value="PE">PE</option>
-                      </select>
-                    ) : (
-                      <select
-                        value={leg.futureType}
-                        onChange={(e) =>
-                          updateLeg(leg.id, {
-                            futureType: e.target.value as "near" | "mid" | "far",
-                          })
-                        }
-                        className="text-[10px] font-medium px-2 py-1 rounded border border-border/50 outline-none bg-muted text-foreground cursor-pointer"
-                      >
-                        <option value="near">Near</option>
-                        <option value="mid">Mid</option>
-                        <option value="far">Far</option>
-                      </select>
-                    )}
-
-                    {/* Strike (options only) */}
-                    {!isFuture && (
-                      <select
-                        value={leg.strike}
-                        onChange={(e) =>
-                          updateLeg(leg.id, { strike: Number(e.target.value) })
-                        }
-                        className="text-[10px] font-mono font-semibold px-2 py-1 rounded border border-border/50 outline-none bg-muted text-foreground cursor-pointer w-24"
-                      >
-                        {strikes.map((s) => (
-                          <option key={s} value={s}>
-                            {s.toLocaleString()} {Math.abs(s - spot) <= step / 2 ? " ATM" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    {/* Expiry */}
+                      <option value="near">Near Month</option>
+                      <option value="mid">Mid Month</option>
+                      <option value="far">Far Month</option>
+                    </select>
+                  ) : (
                     <select
                       value={leg.expiry}
-                      onChange={(e) =>
-                        updateLeg(leg.id, { expiry: e.target.value })
-                      }
-                      className="text-[10px] px-2 py-1 rounded border border-border/50 outline-none bg-muted text-foreground cursor-pointer"
+                      onChange={(e) => updateLeg(leg.id, { expiry: e.target.value })}
+                      className="bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[90px]"
                     >
                       {expiries.map((exp) => (
                         <option key={exp.label} value={exp.label}>
@@ -747,69 +691,134 @@ const EnhancedStrategyBuilder = () => {
                         </option>
                       ))}
                     </select>
+                  )}
 
-                    {/* Lots */}
-                    <div className="flex items-center gap-1">
-                      <span className="text-[9px] text-muted-foreground">Lots:</span>
-                      <input
-                        type="number"
-                        value={leg.lots}
-                        onChange={(e) =>
-                          updateLeg(leg.id, {
-                            lots: Math.max(1, Number(e.target.value)),
-                          })
-                        }
-                        min={1}
-                        className="w-12 text-[10px] font-mono px-1.5 py-1 rounded border border-border/50 outline-none bg-muted text-foreground text-center"
-                      />
-                      <span className="text-[9px] text-muted-foreground">
-                        ({leg.lots * lotSize})
-                      </span>
-                    </div>
-
-                    {/* Entry Type */}
+                  {/* Strike Mode */}
+                  {!isFuture ? (
                     <select
-                      value={leg.entryType}
-                      onChange={(e) =>
-                        updateLeg(leg.id, {
-                          entryType: e.target.value as "MKT" | "LMT",
-                        })
-                      }
-                      className="text-[10px] px-2 py-1 rounded border border-border/50 outline-none bg-muted text-foreground cursor-pointer"
+                      value={leg.strikeMode || "spot_based"}
+                      onChange={(e) => updateLeg(leg.id, { strikeMode: e.target.value as any })}
+                      className="bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[85px]"
                     >
-                      <option value="MKT">Market</option>
-                      <option value="LMT">Limit</option>
+                      <option value="spot_based">Spot Based</option>
+                      <option value="premium_based">Premium</option>
                     </select>
+                  ) : (
+                    <span className="w-[85px] text-[10px] text-muted-foreground text-center">—</span>
+                  )}
 
-                    {/* Limit Price */}
-                    {leg.entryType === "LMT" && (
-                      <input
-                        type="number"
-                        value={leg.limitPrice || ""}
-                        onChange={(e) =>
-                          updateLeg(leg.id, {
-                            limitPrice: Number(e.target.value),
-                          })
-                        }
-                        placeholder="Price"
-                        className="w-20 text-[10px] font-mono px-2 py-1 rounded border border-border/50 outline-none bg-muted text-foreground"
-                      />
+                  {/* Strike Selection */}
+                  {!isFuture ? (
+                    leg.strikeMode === "premium_based" ? (
+                      <div className="flex items-center gap-0.5 w-[90px]">
+                        <span className="text-[9px] text-muted-foreground">₹</span>
+                        <input
+                          type="number"
+                          value={leg.premiumTarget ?? ""}
+                          onChange={(e) => updateLeg(leg.id, { premiumTarget: Number(e.target.value) })}
+                          placeholder="Premium"
+                          className="w-full bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 font-mono"
+                        />
+                      </div>
+                    ) : (
+                      <select
+                        value={leg.strikeSelection || "ATM"}
+                        onChange={(e) => {
+                          const sel = e.target.value;
+                          updateLeg(leg.id, { strikeSelection: sel });
+                          // Also update numeric strike
+                          const atmStrike = Math.round(spot / step) * step;
+                          if (sel === "ATM") {
+                            updateLeg(leg.id, { strike: atmStrike, strikeSelection: sel });
+                          } else if (sel.startsWith("OTM")) {
+                            const n = parseInt(sel.split(" ")[1]) || 1;
+                            const dir = leg.optionType === "CE" ? 1 : -1;
+                            updateLeg(leg.id, { strike: atmStrike + n * step * dir, strikeSelection: sel });
+                          } else if (sel.startsWith("ITM")) {
+                            const n = parseInt(sel.split(" ")[1]) || 1;
+                            const dir = leg.optionType === "CE" ? -1 : 1;
+                            updateLeg(leg.id, { strike: atmStrike + n * step * dir, strikeSelection: sel });
+                          }
+                        }}
+                        className="bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[90px]"
+                      >
+                        {strikeOpts.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    )
+                  ) : (
+                    <span className="w-[90px] text-[10px] text-muted-foreground text-center">—</span>
+                  )}
+
+                  {/* CE/PE */}
+                  {!isFuture ? (
+                    <button
+                      onClick={() => updateLeg(leg.id, { optionType: leg.optionType === "CE" ? "PE" : "CE" })}
+                      className={cn(
+                        "text-[10px] font-bold py-1.5 rounded border text-center w-[50px] transition-colors",
+                        leg.optionType === "CE"
+                          ? "bg-success/20 text-profit border-success/30"
+                          : "bg-destructive/20 text-loss border-destructive/30"
+                      )}
+                    >
+                      {leg.optionType}
+                    </button>
+                  ) : (
+                    <span className="w-[50px] text-[10px] text-muted-foreground text-center">FUT</span>
+                  )}
+
+                  {/* Lots */}
+                  <input
+                    type="number"
+                    value={leg.lots}
+                    onChange={(e) => updateLeg(leg.id, { lots: Math.max(1, Number(e.target.value)) })}
+                    min={1}
+                    className="bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 font-mono w-[50px] text-center"
+                  />
+
+                  {/* Action */}
+                  <button
+                    onClick={() => updateLeg(leg.id, { action: leg.action === "BUY" ? "SELL" : "BUY" })}
+                    className={cn(
+                      "text-[10px] font-bold py-1.5 rounded border text-center w-[55px] transition-colors",
+                      leg.action === "BUY"
+                        ? "bg-success/20 text-profit border-success/30"
+                        : "bg-destructive/20 text-loss border-destructive/30"
                     )}
+                  >
+                    {leg.action === "BUY" ? "Buy" : "Sell"}
+                  </button>
 
-                    {/* Validity */}
-                    <select
-                      value={leg.validity}
-                      onChange={(e) =>
-                        updateLeg(leg.id, {
-                          validity: e.target.value as "DAY" | "IOC",
-                        })
-                      }
-                      className="text-[10px] px-2 py-1 rounded border border-border/50 outline-none bg-muted text-foreground cursor-pointer"
-                    >
-                      <option value="DAY">Day</option>
-                      <option value="IOC">IOC</option>
-                    </select>
+                  {/* Stop Loss % */}
+                  <div className="flex items-center w-[65px]">
+                    <input
+                      type="number"
+                      value={leg.stopLossPct ?? ""}
+                      onChange={(e) => updateLeg(leg.id, { stopLossPct: Number(e.target.value) || undefined })}
+                      placeholder="SL"
+                      className="bg-muted text-foreground text-[10px] px-1 py-1.5 rounded-l border border-border/50 font-mono w-full text-center"
+                    />
+                    <span className="text-[9px] text-muted-foreground bg-muted border border-l-0 border-border/50 rounded-r px-1 py-1.5">%</span>
                   </div>
+
+                  {/* Take Profit % */}
+                  <div className="flex items-center w-[70px]">
+                    <input
+                      type="number"
+                      value={leg.takeProfitPct ?? ""}
+                      onChange={(e) => updateLeg(leg.id, { takeProfitPct: Number(e.target.value) || undefined })}
+                      placeholder="TP"
+                      className="bg-muted text-foreground text-[10px] px-1 py-1.5 rounded-l border border-border/50 font-mono w-full text-center"
+                    />
+                    <span className="text-[9px] text-muted-foreground bg-muted border border-l-0 border-border/50 rounded-r px-1 py-1.5">%</span>
+                  </div>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => removeLeg(leg.id)}
+                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 </div>
               );
             })

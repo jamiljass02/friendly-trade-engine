@@ -36,6 +36,8 @@ export interface StrategyLeg {
   action: "BUY" | "SELL";
   optionType?: "CE" | "PE";
   futureType?: "near" | "mid" | "far";
+  strikeMode: "spot_based" | "premium_based";
+  strikeSelection: string;
   strike?: number;
   expiry: string;
   lots: number;
@@ -43,6 +45,9 @@ export interface StrategyLeg {
   limitPrice?: number;
   validity: "DAY" | "IOC";
   ltp: number;
+  stopLossPct?: number;
+  takeProfitPct?: number;
+  premiumTarget?: number;
 }
 
 type InstrumentFilter = "all" | "index" | "stock";

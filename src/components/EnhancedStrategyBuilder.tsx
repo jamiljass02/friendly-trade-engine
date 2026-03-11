@@ -180,6 +180,8 @@ const EnhancedStrategyBuilder = () => {
         action: "SELL",
         optionType: isFuture ? undefined : "CE",
         futureType: isFuture ? "near" : undefined,
+        strikeMode: "spot_based",
+        strikeSelection: "ATM",
         strike: isFuture ? undefined : atmStrike,
         expiry: expiries[0]?.label || "",
         lots: 1,

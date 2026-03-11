@@ -68,11 +68,14 @@ interface StrategyLeg {
   segment: "OPT" | "FUT";
   side: "BUY" | "SELL";
   optionType: "CE" | "PE";
+  strikeMode: "spot_based" | "premium_based";
   strikeSelection: string;
   customStrike?: number;
   lots: number;
   expiry: "current_week" | "next_week" | "current_month" | "next_month" | "far_month" | "custom";
   customExpiry?: string;
+  stopLossPct?: number;
+  takeProfitPct?: number;
   premiumMode?: "between" | "near" | "below" | "above" | "none";
   premiumMin?: number;
   premiumMax?: number;

@@ -108,7 +108,7 @@ function calcGreeks(
 }
 
 const EnhancedStrategyBuilder = () => {
-  const { isConnected, placeOrder } = useBroker();
+  const { isConnected, placeOrder, searchScrip } = useBroker();
   const { toast } = useToast();
   const [legs, setLegs] = useState<StrategyLeg[]>([]);
   const [strategyName, setStrategyName] = useState("Custom Strategy");

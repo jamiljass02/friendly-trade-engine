@@ -23,7 +23,7 @@ import {
   getDefaultSpotPrice,
   type Instrument,
 } from "@/lib/instruments";
-import { getUpcomingExpiries, type ExpiryDate } from "@/lib/expiry-utils";
+import { getUpcomingExpiries, formatExpiryForSymbol, type ExpiryDate } from "@/lib/expiry-utils";
 import PayoffChart from "./PayoffChart";
 import StrategyTemplates from "./StrategyTemplates";
 import { useBroker } from "@/hooks/useBroker";

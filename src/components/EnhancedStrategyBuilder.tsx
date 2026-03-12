@@ -365,19 +365,43 @@ const EnhancedStrategyBuilder = () => {
         const inst = getInstrument(leg.underlying);
         const lotSize = inst?.lotSize || 25;
         let tsym = leg.underlying;
+
         if (leg.instrumentType.includes("option") && leg.strike) {
-          tsym = `${leg.underlying}27FEB26${leg.optionType === "CE" ? "C" : "P"}${leg.strike}`;
+          const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
+          const expiries = getUpcomingExpiries(isWeekly, 8);
+          const expiryObj = expiries.find((e) => e.label === leg.expiry) || expiries[0];
+          const expiryCode = formatExpiryForSymbol(expiryObj?.date || new Date());
+          tsym = `${leg.underlying}${expiryCode}${leg.optionType === "CE" ? "C" : "P"}${leg.strike}`;
+
+          try {
+            const searchResult = await searchScrip(tsym, inst?.exchange || "NFO");
+            const values = Array.isArray(searchResult?.values)
+              ? searchResult.values
+              : Array.isArray(searchResult)
+                ? searchResult
+                : [];
+
+            const exact = values.find((row: any) =>
+              row.tsym?.includes(String(leg.strike)) &&
+              row.tsym?.includes(leg.optionType === "CE" ? "C" : "P")
+            );
+            if (exact?.tsym) tsym = exact.tsym;
+          } catch {
+            // fallback to constructed symbol
+          }
         }
+
         await placeOrder({
           tradingsymbol: tsym,
           quantity: leg.lots * lotSize,
-          price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp,
+          price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
           transaction_type: leg.action === "BUY" ? "B" : "S",
           order_type: leg.entryType,
           product: "M",
           exchange: inst?.exchange || "NFO",
         });
       }
+
       toast({
         title: "Strategy Executed",
         description: `${detectedStrategy} placed with ${legs.length} legs`,
@@ -392,7 +416,7 @@ const EnhancedStrategyBuilder = () => {
     } finally {
       setExecuting(false);
     }
-  }, [isConnected, legs, placeOrder, toast, detectedStrategy]);
+  }, [isConnected, legs, placeOrder, searchScrip, toast, detectedStrategy]);
 
   return (
     <div className="space-y-6">

@@ -5,7 +5,7 @@ import { CheckSquare, Star, Search, X, TrendingUp, BarChart3, Activity, Wifi, Wi
 import { useToast } from "@/hooks/use-toast";
 import ExpirySelector from "./ExpirySelector";
 import { getInstrument, getDefaultSpotPrice, INDEX_INSTRUMENTS, FNO_STOCKS, type Instrument } from "@/lib/instruments";
-import { getUpcomingExpiries, getDaysToExpiry, formatExpiryForSymbol, type ExpiryDate } from "@/lib/expiry-utils";
+import { getUpcomingExpiries, getDaysToExpiry, type ExpiryDate } from "@/lib/expiry-utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface OptionRow {
@@ -89,7 +89,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
   const [isLive, setIsLive] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
-  const hasScrolledRef = useRef(false);
+  const centeredAtmRef = useRef<number | null>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("oc-favorites") || "[]"); } catch { return []; }
   });
@@ -134,17 +134,16 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     setStockSearch("");
     setLiveData(null);
     setLiveSpot(null);
+    centeredAtmRef.current = null;
     onInstrumentChange?.(symbol);
   }, [onInstrumentChange]);
 
-  // Fetch live option chain data from broker
   const fetchLiveChain = useCallback(async () => {
     if (!isConnected || !instrument || !selectedExpiryObj) return;
 
     try {
       let spot = liveSpot || getDefaultSpotPrice(selectedSymbol);
 
-      // Fetch live spot price from broker FIRST
       if (instrument.type === "index" && (instrument as any).spotToken) {
         try {
           const spotExchange = (instrument as any).exchange === "BFO" ? "BSE" : "NSE";
@@ -155,16 +154,12 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
             onSpotPriceChange?.(spot);
           }
         } catch {
-          // Use default/cached spot if market data fails
+          // keep cached/default spot
         }
       }
 
-      // Use live spot for ATM calculation
       const atmStrike = Math.round(spot / strikeStep) * strikeStep;
-
-      // Fetch option chain
-      const expiryStr = formatExpiryForSymbol(selectedExpiryObj.date);
-      const chainResult = await getOptionChain(selectedSymbol, atmStrike, 15);
+      const chainResult = await getOptionChain(selectedSymbol, atmStrike, 20);
 
       if (chainResult && Array.isArray(chainResult.values || chainResult)) {
         const values = chainResult.values || chainResult;
@@ -174,9 +169,8 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
           const strike = parseFloat(item.strprc);
           if (isNaN(strike)) continue;
 
-          if (!rowMap.has(strike)) {
-            rowMap.set(strike, { strike });
-          }
+          if (!rowMap.has(strike)) rowMap.set(strike, { strike });
+
           const row = rowMap.get(strike)!;
           const lp = parseFloat(item.lp || "0");
           const oi = parseInt(item.oi || "0", 10);
@@ -230,12 +224,11 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     }
   }, [isConnected, instrument, selectedSymbol, selectedExpiryObj, strikeStep, daysToExpiry, liveSpot, getOptionChain, getMarketData, onSpotPriceChange]);
 
-  // Poll every 1 second when connected
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
 
     if (isConnected && selectedExpiryObj) {
-      fetchLiveChain(); // Initial fetch
+      fetchLiveChain();
       pollRef.current = setInterval(fetchLiveChain, 1000);
     } else {
       setIsLive(false);
@@ -247,7 +240,6 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     };
   }, [isConnected, selectedSymbol, selectedExpiry, fetchLiveChain]);
 
-  // Mock data fallback
   const mockChainData = useMemo(() => {
     const spot = getDefaultSpotPrice(selectedSymbol);
     const step = strikeStep;
@@ -285,59 +277,58 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
   }, [selectedSymbol, strikeStep, daysToExpiry]);
 
   const chainData = useMemo(() => {
-    if (liveData && liveData.length > 0) {
-      return { rows: liveData, spot: liveSpot || getDefaultSpotPrice(selectedSymbol) };
+    const sourceRows = liveData && liveData.length > 0 ? liveData : mockChainData.rows;
+    const spot = liveData && liveData.length > 0
+      ? (liveSpot || getDefaultSpotPrice(selectedSymbol))
+      : mockChainData.spot;
+
+    if (!sourceRows.length) return { rows: sourceRows, spot };
+
+    const nearestAtmIndex = sourceRows.reduce((bestIdx, row, idx, rows) => {
+      const currentDiff = Math.abs(row.strike - spot);
+      const bestDiff = Math.abs(rows[bestIdx].strike - spot);
+      return currentDiff < bestDiff ? idx : bestIdx;
+    }, 0);
+
+    const wing = Math.max(10, Math.floor(sourceRows.length / 2));
+    const desiredSize = wing * 2 + 1;
+
+    let start = Math.max(0, nearestAtmIndex - wing);
+    let end = Math.min(sourceRows.length, start + desiredSize);
+    if (end - start < desiredSize) {
+      start = Math.max(0, end - desiredSize);
     }
-    return mockChainData;
+
+    return { rows: sourceRows.slice(start, end), spot };
   }, [liveData, liveSpot, selectedSymbol, mockChainData]);
 
-  // Auto-scroll to ATM row on first data load or symbol change
-  useEffect(() => {
-    hasScrolledRef.current = false;
-  }, [selectedSymbol]);
+  const atmStrike = useMemo(() => {
+    if (chainData.rows.length === 0) return null;
+    return chainData.rows.reduce((best, row) => {
+      const currentDiff = Math.abs(row.strike - chainData.spot);
+      const bestDiff = Math.abs(best - chainData.spot);
+      return currentDiff < bestDiff ? row.strike : best;
+    }, chainData.rows[0].strike);
+  }, [chainData.rows, chainData.spot]);
 
   useEffect(() => {
-    if (hasScrolledRef.current || !tableRef.current || chainData.rows.length === 0) return;
-    const spot = chainData.spot;
-    const atmIdx = chainData.rows.findIndex((r) => Math.abs(r.strike - spot) <= strikeStep / 2);
+    centeredAtmRef.current = null;
+  }, [selectedSymbol, selectedExpiry]);
+
+  useEffect(() => {
+    if (!tableRef.current || !chainData.rows.length || atmStrike === null) return;
+    if (centeredAtmRef.current === atmStrike) return;
+
+    const atmIdx = chainData.rows.findIndex((r) => r.strike === atmStrike);
     if (atmIdx < 0) return;
+
     const rows = tableRef.current.querySelectorAll("tbody tr");
-    if (rows[atmIdx]) {
-      rows[atmIdx].scrollIntoView({ block: "center", behavior: "smooth" });
-      hasScrolledRef.current = true;
-    }
-  }, [chainData, strikeStep]);
+    const target = rows[atmIdx] as HTMLElement | undefined;
+    if (!target) return;
 
-  // Analytics
-  const analytics = useMemo(() => {
-    const rows = chainData.rows;
-    const totalCallOI = rows.reduce((s, r) => s + r.callOI, 0);
-    const totalPutOI = rows.reduce((s, r) => s + r.putOI, 0);
-    const pcr = totalCallOI > 0 ? totalPutOI / totalCallOI : 0;
-    let maxPainStrike = rows[0]?.strike || 0;
-    let minPain = Infinity;
-    for (const row of rows) {
-      let pain = 0;
-      for (const r of rows) {
-        pain += Math.max(0, row.strike - r.strike) * r.callOI;
-        pain += Math.max(0, r.strike - row.strike) * r.putOI;
-      }
-      if (pain < minPain) { minPain = pain; maxPainStrike = row.strike; }
-    }
-    const maxCallOIStrike = rows.reduce((m, r) => r.callOI > m.oi ? { strike: r.strike, oi: r.callOI } : m, { strike: 0, oi: 0 });
-    const maxPutOIStrike = rows.reduce((m, r) => r.putOI > m.oi ? { strike: r.strike, oi: r.putOI } : m, { strike: 0, oi: 0 });
-    return { pcr, maxPainStrike, maxCallOIStrike, maxPutOIStrike, totalCallOI, totalPutOI };
-  }, [chainData]);
-
-  const maxOI = useMemo(() => Math.max(...chainData.rows.map((r) => Math.max(r.callOI, r.putOI)), 1), [chainData]);
-
-  const filteredStocks = useMemo(() => {
-    if (!stockSearch) return FNO_STOCKS.slice(0, 20);
-    const q = stockSearch.toLowerCase();
-    return FNO_STOCKS.filter((s) => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q) || s.industry?.toLowerCase().includes(q)).slice(0, 20);
-  }, [stockSearch]);
-
-  return (
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    centeredAtmRef.current = atmStrike;
+  }, [chainData.rows, atmStrike]);
     <div className="space-y-4">
       {/* Asset Selector Bar */}
       <div className="glass-card rounded-xl overflow-hidden">

@@ -641,9 +641,11 @@ const EnhancedStrategyBuilder = () => {
 
               // Generate strike options as ATM/ITM/OTM labels
               const strikeOpts = [
+                "ITM 1",
                 "ATM",
-                ...Array.from({ length: 20 }, (_, j) => `ITM ${j + 1}`),
-                ...Array.from({ length: 20 }, (_, j) => `OTM ${j + 1}`),
+                "OTM 1",
+                ...Array.from({ length: 19 }, (_, j) => `ITM ${j + 2}`),
+                ...Array.from({ length: 19 }, (_, j) => `OTM ${j + 2}`),
               ];
 
               return (

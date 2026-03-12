@@ -3,8 +3,18 @@ import { Play, AlertTriangle, X, Loader2, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBroker } from "@/hooks/useBroker";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getInstrument, getDefaultSpotPrice } from "@/lib/instruments";
 import { formatExpiryForSymbol } from "@/lib/expiry-utils";
+import {
+  getBrokerOrderId,
+  getOrderFillPrice,
+  isOrderComplete,
+  isOrderFinal,
+  normalizeOrderBook,
+  roundToTick,
+  waitForOrderFill,
+} from "@/lib/broker-order-utils";
 
 interface SelectedLeg {
   strike: number;
@@ -26,6 +36,14 @@ interface StrategyExecutorProps {
   expiryDate?: Date;
 }
 
+interface StopOrderWatch {
+  stopOrderId: string;
+  symbol: string;
+  quantity: number;
+  exchange: string;
+  entryPrice: number;
+}
+
 const StrategyExecutor = ({
   selectedLegs,
   onRemoveLeg,
@@ -36,14 +54,18 @@ const StrategyExecutor = ({
   onQtyChange,
   expiryDate,
 }: StrategyExecutorProps) => {
-  const { isConnected, placeOrder, searchScrip } = useBroker();
+  const { isConnected, placeOrder, searchScrip, getOrders, modifyOrder } = useBroker();
   const { toast } = useToast();
   const inst = getInstrument(instrument);
   const defaultLot = inst?.lotSize || 25;
+  const tickSize = inst?.tickSize || 0.05;
   const [internalQty, setInternalQty] = useState(defaultLot);
   const qty = externalQty ?? internalQty;
   const setQty = onQtyChange ?? setInternalQty;
   const [executing, setExecuting] = useState(false);
+  const [autoPlaceSL, setAutoPlaceSL] = useState(true);
+  const [stopLossPct, setStopLossPct] = useState(30);
+  const [moveToCostOnSlHit, setMoveToCostOnSlHit] = useState(true);
 
   const strategyType: StrategyType = (() => {
     if (selectedLegs.length !== 2) {
@@ -82,10 +104,8 @@ const StrategyExecutor = ({
     selectedLegs.filter((l) => l.action === "SELL").length * qty * spotPrice * 0.15
   );
 
-  // Build the correct Shoonya trading symbol
   const buildTradingSymbol = useCallback((leg: SelectedLeg): string => {
     if (!expiryDate) {
-      // Fallback: use current nearest Thursday
       const now = new Date();
       const day = now.getDate();
       const month = now.toLocaleString("en", { month: "short" }).toUpperCase();
@@ -96,51 +116,172 @@ const StrategyExecutor = ({
     return `${instrument}${expiryStr}${leg.type === "CE" ? "C" : "P"}${leg.strike}`;
   }, [instrument, expiryDate]);
 
+  const resolveTradingSymbol = useCallback(async (leg: SelectedLeg) => {
+    let tsym = buildTradingSymbol(leg);
+
+    try {
+      const searchResult = await searchScrip(tsym, inst?.exchange || "NFO");
+      const values = Array.isArray(searchResult?.values)
+        ? searchResult.values
+        : Array.isArray(searchResult)
+          ? searchResult
+          : [];
+
+      if (values.length > 0) {
+        const match = values.find((v: any) =>
+          v.tsym?.includes(String(leg.strike)) &&
+          v.tsym?.includes(leg.type === "CE" ? "C" : "P")
+        );
+        if (match?.tsym) tsym = match.tsym;
+      }
+    } catch {
+      console.log("Search scrip failed, using constructed symbol:", tsym);
+    }
+
+    return tsym;
+  }, [buildTradingSymbol, searchScrip, inst?.exchange]);
+
+  const monitorMoveToCost = useCallback(async (watchList: StopOrderWatch[]) => {
+    if (watchList.length < 2) return;
+
+    const active = new Map(watchList.map((item) => [item.stopOrderId, item]));
+
+    for (let attempt = 0; attempt < 120 && active.size > 1; attempt++) {
+      try {
+        const ordersPayload = await getOrders();
+        const orders = normalizeOrderBook(ordersPayload);
+
+        let triggered: StopOrderWatch | null = null;
+
+        for (const item of active.values()) {
+          const order = orders.find((row) => {
+            const candidate = row.norenordno ?? row.order_id ?? row.orderno ?? row.orderid;
+            return candidate && String(candidate) === item.stopOrderId;
+          });
+
+          if (!order) continue;
+          if (isOrderComplete(order)) {
+            triggered = item;
+            break;
+          }
+          if (isOrderFinal(order)) {
+            active.delete(item.stopOrderId);
+          }
+        }
+
+        if (triggered) {
+          const siblings = Array.from(active.values()).filter((item) => item.stopOrderId !== triggered.stopOrderId);
+
+          for (const sibling of siblings) {
+            await modifyOrder({
+              order_id: sibling.stopOrderId,
+              tradingsymbol: sibling.symbol,
+              quantity: sibling.quantity,
+              trigger_price: roundToTick(sibling.entryPrice, tickSize),
+              order_type: "SL-MKT",
+              price: 0,
+              exchange: sibling.exchange,
+            });
+          }
+
+          toast({
+            title: "Move to Cost Applied",
+            description: "Remaining stop-loss orders moved to cost.",
+          });
+          return;
+        }
+      } catch {
+        // continue polling
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }, [getOrders, modifyOrder, tickSize, toast]);
+
   const executeStrategy = useCallback(async () => {
-    if (!isConnected || selectedLegs.length === 0) return;
+    if (!isConnected || selectedLegs.length === 0 || !inst) return;
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast({ title: "Invalid Quantity", description: "Enter a valid quantity.", variant: "destructive" });
+      return;
+    }
+    if (autoPlaceSL && (!Number.isFinite(stopLossPct) || stopLossPct <= 0)) {
+      toast({ title: "Invalid Stop Loss", description: "Stop loss % should be greater than 0.", variant: "destructive" });
+      return;
+    }
 
     setExecuting(true);
     try {
       const results: string[] = [];
+      const stopWatch: StopOrderWatch[] = [];
 
       for (const leg of selectedLegs) {
-        let tsym = buildTradingSymbol(leg);
+        const tsym = await resolveTradingSymbol(leg);
 
-        // Try to resolve exact trading symbol via search
-        try {
-          const searchResult = await searchScrip(tsym, inst?.exchange || "NFO");
-          if (searchResult?.values && searchResult.values.length > 0) {
-            // Find best match
-            const match = searchResult.values.find((v: any) =>
-              v.tsym?.includes(String(leg.strike)) &&
-              v.tsym?.includes(leg.type === "CE" ? "C" : "P")
-            );
-            if (match?.tsym) {
-              tsym = match.tsym;
-            }
-          }
-        } catch {
-          console.log("Search scrip failed, using constructed symbol:", tsym);
-        }
-
-        console.log(`Placing order: ${leg.action} ${tsym} qty=${qty} price=${leg.ltp}`);
-
-        await placeOrder({
+        const entryResult = await placeOrder({
           tradingsymbol: tsym,
           quantity: qty,
-          price: 0, // Market order - price 0
+          price: 0,
           transaction_type: leg.action === "BUY" ? "B" : "S",
           order_type: "MKT",
           product: "M",
-          exchange: inst?.exchange || "NFO",
+          exchange: inst.exchange,
         });
 
+        const entryOrderId = getBrokerOrderId(entryResult);
+        let entryPrice = leg.ltp;
+
+        if (entryOrderId) {
+          const fill = await waitForOrderFill({ orderId: entryOrderId, getOrders });
+          if (fill.state === "rejected") {
+            throw new Error(`Order rejected for ${tsym}.`);
+          }
+          if (fill.order) {
+            entryPrice = getOrderFillPrice(fill.order, leg.ltp);
+          }
+        }
+
         results.push(`${leg.action} ${tsym}`);
+
+        if (autoPlaceSL) {
+          const stopTriggerRaw = leg.action === "SELL"
+            ? entryPrice * (1 + stopLossPct / 100)
+            : entryPrice * (1 - stopLossPct / 100);
+
+          const stopTrigger = Math.max(tickSize, roundToTick(stopTriggerRaw, tickSize));
+
+          const stopResult = await placeOrder({
+            tradingsymbol: tsym,
+            quantity: qty,
+            price: 0,
+            trigger_price: stopTrigger,
+            transaction_type: leg.action === "BUY" ? "S" : "B",
+            order_type: "SL-MKT",
+            product: "M",
+            exchange: inst.exchange,
+          });
+
+          const stopOrderId = getBrokerOrderId(stopResult);
+          if (stopOrderId) {
+            stopWatch.push({
+              stopOrderId,
+              symbol: tsym,
+              quantity: qty,
+              exchange: inst.exchange,
+              entryPrice,
+            });
+          }
+        }
+      }
+
+      if (moveToCostOnSlHit && autoPlaceSL && stopWatch.length > 1) {
+        void monitorMoveToCost(stopWatch);
       }
 
       toast({
         title: "Strategy Executed ✓",
-        description: `${strategyLabel} placed: ${results.join(", ")}`,
+        description: autoPlaceSL
+          ? `${strategyLabel} placed with broker-side SL orders.`
+          : `${strategyLabel} placed: ${results.join(", ")}`,
       });
       onClearAll();
     } catch (err: any) {
@@ -152,7 +293,23 @@ const StrategyExecutor = ({
     } finally {
       setExecuting(false);
     }
-  }, [isConnected, selectedLegs, qty, instrument, inst, placeOrder, searchScrip, toast, onClearAll, strategyLabel, buildTradingSymbol]);
+  }, [
+    isConnected,
+    selectedLegs,
+    inst,
+    qty,
+    autoPlaceSL,
+    stopLossPct,
+    moveToCostOnSlHit,
+    resolveTradingSymbol,
+    placeOrder,
+    getOrders,
+    monitorMoveToCost,
+    strategyLabel,
+    toast,
+    onClearAll,
+    tickSize,
+  ]);
 
   if (selectedLegs.length === 0) {
     return (
@@ -180,7 +337,6 @@ const StrategyExecutor = ({
         </button>
       </div>
 
-      {/* Legs */}
       <div className="p-4 space-y-2">
         {selectedLegs.map((leg) => (
           <div key={`${leg.strike}-${leg.type}`}
@@ -209,7 +365,6 @@ const StrategyExecutor = ({
         ))}
       </div>
 
-      {/* Quantity */}
       <div className="px-5 pb-3">
         <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
           Quantity (Lot: {defaultLot})
@@ -219,7 +374,41 @@ const StrategyExecutor = ({
           className="mt-1 w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-mono" />
       </div>
 
-      {/* Summary */}
+      <div className="px-5 pb-4 space-y-2">
+        <div className="flex items-center justify-between rounded-md border border-border/40 px-3 py-2 bg-secondary/20">
+          <label className="text-[11px] font-medium text-foreground">Place broker-side SL</label>
+          <Checkbox
+            checked={autoPlaceSL}
+            onCheckedChange={(checked) => setAutoPlaceSL(checked === true)}
+          />
+        </div>
+
+        {autoPlaceSL && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wider">SL %</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={stopLossPct}
+                onChange={(e) => setStopLossPct(Number(e.target.value))}
+                className="mt-1 w-full bg-muted text-foreground text-xs px-3 py-2 rounded-md border border-border/50 outline-none focus:ring-1 focus:ring-primary font-mono"
+              />
+            </div>
+            <div className="flex items-end">
+              <div className="flex items-center justify-between w-full rounded-md border border-border/40 px-3 py-2 bg-secondary/20">
+                <label className="text-[11px] text-foreground">Move SL to cost</label>
+                <Checkbox
+                  checked={moveToCostOnSlHit}
+                  onCheckedChange={(checked) => setMoveToCostOnSlHit(checked === true)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="px-5 py-4 border-t border-border/50 bg-secondary/20">
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -240,7 +429,6 @@ const StrategyExecutor = ({
         </div>
       </div>
 
-      {/* Execute */}
       <div className="px-5 py-4 border-t border-border/50">
         {!isConnected ? (
           <div className="flex items-center gap-2 text-xs text-warning">

@@ -3,6 +3,27 @@ import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import { brokerFetch } from "@/lib/broker-api";
 
+function parseBrokerError(action: string, payload: unknown): string | null {
+  if (!payload) return "Empty broker response";
+  if (typeof payload === "string") return payload;
+  if (Array.isArray(payload)) return null;
+  if (typeof payload !== "object") return null;
+
+  const data = payload as Record<string, unknown>;
+  const stat = String(data.stat ?? "").toUpperCase();
+  const explicitError = data.error ?? data.emsg ?? data.message;
+
+  if (explicitError && stat !== "OK") {
+    return String(explicitError);
+  }
+
+  if (stat && stat !== "OK") {
+    return String(explicitError ?? `${action} failed`);
+  }
+
+  return null;
+}
+
 export function useBroker() {
   const { session, clearSession } = useShoonyaSession();
   const [isLoading, setIsLoading] = useState(false);
@@ -11,15 +32,27 @@ export function useBroker() {
   const callBrokerAPI = async (action: string, params: Record<string, unknown> = {}) => {
     if (!session) throw new Error("Not connected");
 
-    const { ok, data } = await brokerFetch({
-      action,
-      session_token: session.sessionToken,
-      uid: session.userCode,
-      ...params,
-    });
+    setIsLoading(true);
+    try {
+      const { ok, status, data } = await brokerFetch({
+        action,
+        session_token: session.sessionToken,
+        uid: session.userCode,
+        ...params,
+      });
 
-    if (!ok || data.error) throw new Error(data.error || "Request failed");
-    return data;
+      if (!ok) {
+        const message = parseBrokerError(action, data) || `Broker request failed (${status})`;
+        throw new Error(message);
+      }
+
+      const brokerError = parseBrokerError(action, data);
+      if (brokerError) throw new Error(brokerError);
+
+      return data;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const logout = async () => {

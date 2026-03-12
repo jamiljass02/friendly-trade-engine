@@ -330,6 +330,53 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     centeredAtmRef.current = atmStrike;
   }, [chainData.rows, atmStrike]);
 
+  const analytics = useMemo(() => {
+    const rows = chainData.rows;
+    const totalCallOI = rows.reduce((s, r) => s + r.callOI, 0);
+    const totalPutOI = rows.reduce((s, r) => s + r.putOI, 0);
+    const pcr = totalCallOI > 0 ? totalPutOI / totalCallOI : 0;
+    let maxPainStrike = rows[0]?.strike || 0;
+    let minPain = Infinity;
+    for (const row of rows) {
+      let pain = 0;
+      for (const r of rows) {
+        pain += Math.max(0, row.strike - r.strike) * r.callOI;
+        pain += Math.max(0, r.strike - row.strike) * r.putOI;
+      }
+      if (pain < minPain) {
+        minPain = pain;
+        maxPainStrike = row.strike;
+      }
+    }
+
+    const maxCallOIStrike = rows.reduce(
+      (m, r) => (r.callOI > m.oi ? { strike: r.strike, oi: r.callOI } : m),
+      { strike: 0, oi: 0 }
+    );
+    const maxPutOIStrike = rows.reduce(
+      (m, r) => (r.putOI > m.oi ? { strike: r.strike, oi: r.putOI } : m),
+      { strike: 0, oi: 0 }
+    );
+
+    return { pcr, maxPainStrike, maxCallOIStrike, maxPutOIStrike, totalCallOI, totalPutOI };
+  }, [chainData]);
+
+  const maxOI = useMemo(
+    () => Math.max(...chainData.rows.map((r) => Math.max(r.callOI, r.putOI)), 1),
+    [chainData]
+  );
+
+  const filteredStocks = useMemo(() => {
+    if (!stockSearch) return FNO_STOCKS.slice(0, 20);
+    const q = stockSearch.toLowerCase();
+    return FNO_STOCKS.filter(
+      (s) =>
+        s.symbol.toLowerCase().includes(q) ||
+        s.name.toLowerCase().includes(q) ||
+        s.industry?.toLowerCase().includes(q)
+    ).slice(0, 20);
+  }, [stockSearch]);
+
   return (
     <div className="space-y-4">
       {/* Asset Selector Bar */}

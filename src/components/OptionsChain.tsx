@@ -556,7 +556,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
               {chainData.rows.map((row) => {
                 const isITMCall = row.strike < chainData.spot;
                 const isITMPut = row.strike > chainData.spot;
-                const isATM = Math.abs(row.strike - chainData.spot) <= strikeStep / 2;
+                const isATM = atmStrike !== null && row.strike === atmStrike;
                 const callSelected = isSelected(row.strike, "CE");
                 const putSelected = isSelected(row.strike, "PE");
                 const isMaxPain = row.strike === analytics.maxPainStrike;

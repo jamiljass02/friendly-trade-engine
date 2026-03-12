@@ -329,6 +329,8 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
     target.scrollIntoView({ block: "center", behavior: "smooth" });
     centeredAtmRef.current = atmStrike;
   }, [chainData.rows, atmStrike]);
+
+  return (
     <div className="space-y-4">
       {/* Asset Selector Bar */}
       <div className="glass-card rounded-xl overflow-hidden">

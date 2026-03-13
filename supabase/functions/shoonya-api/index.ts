@@ -34,27 +34,38 @@ Deno.serve(async (req) => {
 
       const passwordHash = await sha256(password);
       const appKey = await sha256(`${user_code}|${api_key}`);
+      const vcCandidates = vendor_code
+        ? [String(vendor_code).trim()]
+        : [String(user_code).trim(), `${String(user_code).trim()}_U`, "NA"];
 
-      const loginPayload = {
-        source: "API",
-        apkversion: "1.0.0",
-        uid: user_code,
-        pwd: passwordHash,
-        factor2: totp,
-        vc: vendor_code || user_code,
-        appkey: appKey,
-        imei: imei || "tradex-app",
-      };
+      let loginData: any = null;
 
-      const loginRes = await fetch(`${SHOONYA_BASE}/QuickAuth`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "jData=" + JSON.stringify(loginPayload),
-      });
+      for (const vc of vcCandidates) {
+        const loginPayload = {
+          source: "API",
+          apkversion: "1.0.0",
+          uid: user_code,
+          pwd: passwordHash,
+          factor2: String(totp ?? "").trim(),
+          vc,
+          appkey: appKey,
+          imei: imei || "tradex-app",
+        };
 
-      const loginData = await loginRes.json();
+        const loginRes = await fetch(`${SHOONYA_BASE}/QuickAuth`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "jData=" + JSON.stringify(loginPayload),
+        });
 
-      if (loginData.stat === "Ok") {
+        loginData = await loginRes.json();
+
+        if (String(loginData?.stat ?? "").toUpperCase() === "OK") {
+          break;
+        }
+      }
+
+      if (String(loginData?.stat ?? "").toUpperCase() === "OK") {
         return new Response(JSON.stringify({
           status: "connected",
           session_token: loginData.susertoken,
@@ -63,14 +74,14 @@ Deno.serve(async (req) => {
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-      } else {
-        return new Response(JSON.stringify({
-          error: loginData.emsg || "Login failed",
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
       }
+
+      return new Response(JSON.stringify({
+        error: loginData?.emsg || loginData?.error || "Login failed",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // All other actions require session_token and uid from client

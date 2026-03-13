@@ -108,7 +108,7 @@ function calcGreeks(
 }
 
 const EnhancedStrategyBuilder = () => {
-  const { isConnected, placeOrder, searchScrip } = useBroker();
+  const { isConnected, placeOrder, searchScrip, getOptionChain } = useBroker();
   const { toast } = useToast();
   const [legs, setLegs] = useState<StrategyLeg[]>([]);
   const [strategyName, setStrategyName] = useState("Custom Strategy");
@@ -364,30 +364,80 @@ const EnhancedStrategyBuilder = () => {
       for (const leg of legs) {
         const inst = getInstrument(leg.underlying);
         const lotSize = inst?.lotSize || 25;
+        const exchange = inst?.exchange || "NFO";
         let tsym = leg.underlying;
 
-        if (leg.instrumentType.includes("option") && leg.strike) {
-          const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-          const expiries = getUpcomingExpiries(isWeekly, 8);
-          const expiryObj = expiries.find((e) => e.label === leg.expiry) || expiries[0];
-          const expiryCode = formatExpiryForSymbol(expiryObj?.date || new Date());
-          tsym = `${leg.underlying}${expiryCode}${leg.optionType === "CE" ? "C" : "P"}${leg.strike}`;
+        if (leg.instrumentType.includes("option")) {
+          if (!leg.strike || !leg.optionType) {
+            throw new Error(`Select a valid strike for ${leg.underlying} before executing.`);
+          }
+
+          const strike = Number(leg.strike);
+          const optionType = leg.optionType;
 
           try {
-            const searchResult = await searchScrip(tsym, inst?.exchange || "NFO");
-            const values = Array.isArray(searchResult?.values)
-              ? searchResult.values
-              : Array.isArray(searchResult)
-                ? searchResult
+            const chainResult = await getOptionChain(leg.underlying, strike, 12);
+            const values = Array.isArray((chainResult as any)?.values)
+              ? (chainResult as any).values
+              : Array.isArray(chainResult)
+                ? chainResult
                 : [];
 
-            const exact = values.find((row: any) =>
-              row.tsym?.includes(String(leg.strike)) &&
-              row.tsym?.includes(leg.optionType === "CE" ? "C" : "P")
-            );
-            if (exact?.tsym) tsym = exact.tsym;
+            const exactFromChain = values.find((row: any) => {
+              const rowStrike = Number(row.strprc ?? row.strike);
+              const rowType = String(row.optt ?? "").toUpperCase();
+              return rowStrike === strike && rowType === optionType && row.tsym;
+            });
+
+            if (exactFromChain?.tsym) {
+              tsym = String(exactFromChain.tsym);
+            }
           } catch {
-            // fallback to constructed symbol
+            // fallback to search
+          }
+
+          if (tsym === leg.underlying) {
+            const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
+            const expiries = getUpcomingExpiries(isWeekly, 8);
+            const expiryObj = expiries.find((e) => e.label === leg.expiry) || expiries[0];
+            const expiryCode = formatExpiryForSymbol(expiryObj?.date || new Date());
+            const constructed = `${leg.underlying}${expiryCode}${optionType === "CE" ? "C" : "P"}${strike}`;
+            const searchCandidates = [constructed, `${leg.underlying} ${strike} ${optionType}`];
+
+            for (const query of searchCandidates) {
+              try {
+                const searchResult = await searchScrip(query, exchange);
+                const values = Array.isArray(searchResult?.values)
+                  ? searchResult.values
+                  : Array.isArray(searchResult)
+                    ? searchResult
+                    : [];
+
+                const exact = values.find((row: any) => {
+                  const rowStrike = Number(row.strprc ?? row.strike);
+                  const rowType = String(row.optt ?? "").toUpperCase();
+                  const rowTsym = String(row.tsym ?? "");
+                  const strikeMatch = Number.isFinite(rowStrike)
+                    ? rowStrike === strike
+                    : rowTsym.includes(String(strike));
+                  const typeMatch = rowType
+                    ? rowType === optionType
+                    : rowTsym.includes(optionType === "CE" ? "C" : "P");
+                  return strikeMatch && typeMatch;
+                });
+
+                if (exact?.tsym) {
+                  tsym = String(exact.tsym);
+                  break;
+                }
+              } catch {
+                // continue to next fallback
+              }
+            }
+          }
+
+          if (tsym === leg.underlying) {
+            throw new Error(`Unable to resolve trading symbol for ${leg.underlying} ${optionType} ${strike}.`);
           }
         }
 
@@ -398,7 +448,7 @@ const EnhancedStrategyBuilder = () => {
           transaction_type: leg.action === "BUY" ? "B" : "S",
           order_type: leg.entryType,
           product: "M",
-          exchange: inst?.exchange || "NFO",
+          exchange,
         });
       }
 
@@ -416,7 +466,7 @@ const EnhancedStrategyBuilder = () => {
     } finally {
       setExecuting(false);
     }
-  }, [isConnected, legs, placeOrder, searchScrip, toast, detectedStrategy]);
+  }, [isConnected, legs, placeOrder, searchScrip, getOptionChain, toast, detectedStrategy]);
 
   return (
     <div className="space-y-6">
@@ -663,14 +713,11 @@ const EnhancedStrategyBuilder = () => {
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
               const expiries = getUpcomingExpiries(isWeekly, 4);
 
-              // Generate strike options as ATM/ITM/OTM labels
-              const strikeOpts = [
-                "ITM 1",
-                "ATM",
-                "OTM 1",
-                ...Array.from({ length: 19 }, (_, j) => `ITM ${j + 2}`),
-                ...Array.from({ length: 19 }, (_, j) => `OTM ${j + 2}`),
-              ];
+              // Keep ATM centered between nearby OTM/ITM levels
+              const primaryStrikeOpts = ["OTM 3", "OTM 2", "OTM 1", "ATM", "ITM 1", "ITM 2", "ITM 3"];
+              const strikeOpts = primaryStrikeOpts.includes(leg.strikeSelection)
+                ? primaryStrikeOpts
+                : [...primaryStrikeOpts, leg.strikeSelection];
 
               return (
                 <div

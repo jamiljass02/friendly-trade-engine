@@ -21,6 +21,7 @@ interface SelectedLeg {
   type: "CE" | "PE";
   ltp: number;
   action: "BUY" | "SELL";
+  tradingSymbol?: string;
 }
 
 type StrategyType = "straddle" | "strangle" | "iron_condor" | "custom";
@@ -54,7 +55,7 @@ const StrategyExecutor = ({
   onQtyChange,
   expiryDate,
 }: StrategyExecutorProps) => {
-  const { isConnected, placeOrder, searchScrip, getOrders, modifyOrder } = useBroker();
+  const { isConnected, placeOrder, searchScrip, getOptionChain, getOrders, modifyOrder } = useBroker();
   const { toast } = useToast();
   const inst = getInstrument(instrument);
   const defaultLot = inst?.lotSize || 25;
@@ -117,7 +118,30 @@ const StrategyExecutor = ({
   }, [instrument, expiryDate]);
 
   const resolveTradingSymbol = useCallback(async (leg: SelectedLeg) => {
+    if (leg.tradingSymbol) return leg.tradingSymbol;
+
     let tsym = buildTradingSymbol(leg);
+
+    try {
+      const chainResult = await getOptionChain(instrument, leg.strike, 12);
+      const values = Array.isArray((chainResult as any)?.values)
+        ? (chainResult as any).values
+        : Array.isArray(chainResult)
+          ? chainResult
+          : [];
+
+      const exactFromChain = values.find((row: any) => {
+        const strike = Number(row.strprc ?? row.strike);
+        const type = String(row.optt ?? "").toUpperCase();
+        return strike === leg.strike && type === leg.type && row.tsym;
+      });
+
+      if (exactFromChain?.tsym) {
+        return String(exactFromChain.tsym);
+      }
+    } catch {
+      // fallback to search
+    }
 
     try {
       const searchResult = await searchScrip(tsym, inst?.exchange || "NFO");
@@ -128,10 +152,14 @@ const StrategyExecutor = ({
           : [];
 
       if (values.length > 0) {
-        const match = values.find((v: any) =>
-          v.tsym?.includes(String(leg.strike)) &&
-          v.tsym?.includes(leg.type === "CE" ? "C" : "P")
-        );
+        const match = values.find((v: any) => {
+          const strike = Number(v.strprc ?? v.strike);
+          const type = String(v.optt ?? "").toUpperCase();
+          if (Number.isFinite(strike) && type) {
+            return strike === leg.strike && type === leg.type && v.tsym;
+          }
+          return v.tsym?.includes(String(leg.strike)) && v.tsym?.includes(leg.type === "CE" ? "C" : "P");
+        });
         if (match?.tsym) tsym = match.tsym;
       }
     } catch {
@@ -139,7 +167,7 @@ const StrategyExecutor = ({
     }
 
     return tsym;
-  }, [buildTradingSymbol, searchScrip, inst?.exchange]);
+  }, [buildTradingSymbol, getOptionChain, instrument, searchScrip, inst?.exchange]);
 
   const monitorMoveToCost = useCallback(async (watchList: StopOrderWatch[]) => {
     if (watchList.length < 2) return;

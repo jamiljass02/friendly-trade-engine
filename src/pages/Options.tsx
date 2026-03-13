@@ -10,6 +10,7 @@ export interface SelectedLeg {
   type: "CE" | "PE";
   ltp: number;
   action: "BUY" | "SELL";
+  tradingSymbol?: string;
 }
 
 const Options = () => {

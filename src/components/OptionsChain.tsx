@@ -577,7 +577,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
                     <td className={cn("text-right px-2 py-2 font-mono text-muted-foreground", isITMCall && "bg-success/5")}>{row.callIV.toFixed(1)}</td>
                     <td className={cn("text-right px-2 py-2 font-mono font-semibold cursor-pointer transition-colors", isITMCall && "bg-success/5",
                         callSelected ? "text-primary bg-primary/10" : "text-foreground hover:text-primary hover:bg-primary/5")}
-                      onClick={() => onStrikeSelect?.(row.strike, "CE", row.callLTP)}>
+                      onClick={() => onStrikeSelect?.(row.strike, "CE", row.callLTP, row.callTsym)}>
                       <div className="flex items-center justify-end gap-1">
                         {callSelected && <CheckSquare className="w-3 h-3" />}
                         {row.callLTP.toFixed(2)}

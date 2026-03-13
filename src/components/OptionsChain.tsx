@@ -592,7 +592,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
                     </td>
                     <td className={cn("text-right px-2 py-2 font-mono font-semibold cursor-pointer transition-colors", isITMPut && "bg-destructive/5",
                         putSelected ? "text-primary bg-primary/10" : "text-foreground hover:text-primary hover:bg-primary/5")}
-                      onClick={() => onStrikeSelect?.(row.strike, "PE", row.putLTP)}>
+                      onClick={() => onStrikeSelect?.(row.strike, "PE", row.putLTP, row.putTsym)}>
                       <div className="flex items-center justify-end gap-1">
                         {putSelected && <CheckSquare className="w-3 h-3" />}
                         {row.putLTP.toFixed(2)}

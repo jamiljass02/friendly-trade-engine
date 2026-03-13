@@ -55,7 +55,7 @@ const StrategyExecutor = ({
   onQtyChange,
   expiryDate,
 }: StrategyExecutorProps) => {
-  const { isConnected, placeOrder, searchScrip, getOrders, modifyOrder } = useBroker();
+  const { isConnected, placeOrder, searchScrip, getOptionChain, getOrders, modifyOrder } = useBroker();
   const { toast } = useToast();
   const inst = getInstrument(instrument);
   const defaultLot = inst?.lotSize || 25;

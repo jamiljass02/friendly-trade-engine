@@ -113,9 +113,13 @@ interface AlgoStrategy {
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
 const lotSizes: Record<string, number> = { NIFTY: 50, BANKNIFTY: 15, SENSEX: 10, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 10 };
 const strikeOptions = [
+  "OTM 3",
+  "OTM 2",
+  "OTM 1",
   "ATM",
-  ...Array.from({ length: 30 }, (_, i) => `ITM ${i + 1}`),
-  ...Array.from({ length: 30 }, (_, i) => `OTM ${i + 1}`),
+  "ITM 1",
+  "ITM 2",
+  "ITM 3",
   "CUSTOM",
 ];
 const premiumModes = [

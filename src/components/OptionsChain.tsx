@@ -71,7 +71,7 @@ const formatNum = (n: number) => {
 const VOLUME_LEADERS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SBIN", "TATAMOTORS", "BAJFINANCE", "ICICIBANK"];
 
 interface OptionsChainProps {
-  onStrikeSelect?: (strike: number, type: "CE" | "PE", ltp: number) => void;
+  onStrikeSelect?: (strike: number, type: "CE" | "PE", ltp: number, tradingSymbol?: string) => void;
   selectedStrikes?: { strike: number; type: "CE" | "PE" }[];
   onInstrumentChange?: (symbol: string) => void;
   onExpiryChange?: (expiryDate: Date) => void;

@@ -113,7 +113,7 @@ const BrokerLogin = () => {
           {[
             { key: "user_code", label: "User ID", placeholder: "FA12345", secret: false, required: true },
             { key: "password", label: "Password", placeholder: "Trading password", secret: true, required: true },
-            { key: "totp", label: "TOTP Code", placeholder: "6-digit code or TOTP secret", secret: false, required: true },
+            { key: "totp", label: "TOTP Code", placeholder: "Current 6-digit code", secret: false, required: true },
             { key: "api_key", label: "API Key", placeholder: "From Shoonya API portal", secret: true, required: true },
             { key: "vendor_code", label: "Vendor Code", placeholder: "Vendor code (optional)", secret: false, required: false },
           ].map((field) => (

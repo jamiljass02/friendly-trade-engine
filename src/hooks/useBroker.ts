@@ -3,6 +3,16 @@ import { useToast } from "@/hooks/use-toast";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import { brokerFetch } from "@/lib/broker-api";
 
+const NO_DATA_ACTIONS = new Set([
+  "search_scrip",
+  "option_chain",
+  "orders",
+  "positions",
+  "holdings",
+  "funds",
+  "market_data",
+]);
+
 function parseBrokerError(action: string, payload: unknown): string | null {
   if (!payload) return "Empty broker response";
   if (typeof payload === "string") return payload;
@@ -10,8 +20,13 @@ function parseBrokerError(action: string, payload: unknown): string | null {
   if (typeof payload !== "object") return null;
 
   const data = payload as Record<string, unknown>;
-  const stat = String(data.stat ?? "").toUpperCase();
+  const stat = String(data.stat ?? "").trim().toUpperCase();
   const explicitError = data.error ?? data.emsg ?? data.message;
+  const errorText = String(explicitError ?? "");
+
+  if (/no data/i.test(errorText) && NO_DATA_ACTIONS.has(action)) {
+    return null;
+  }
 
   if (explicitError && stat !== "OK") {
     return String(explicitError);

@@ -21,6 +21,7 @@ interface SelectedLeg {
   type: "CE" | "PE";
   ltp: number;
   action: "BUY" | "SELL";
+  tradingSymbol?: string;
 }
 
 type StrategyType = "straddle" | "strangle" | "iron_condor" | "custom";

@@ -713,14 +713,11 @@ const EnhancedStrategyBuilder = () => {
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
               const expiries = getUpcomingExpiries(isWeekly, 4);
 
-              // Generate strike options as ATM/ITM/OTM labels
-              const strikeOpts = [
-                "ITM 1",
-                "ATM",
-                "OTM 1",
-                ...Array.from({ length: 19 }, (_, j) => `ITM ${j + 2}`),
-                ...Array.from({ length: 19 }, (_, j) => `OTM ${j + 2}`),
-              ];
+              // Keep ATM centered between nearby OTM/ITM levels
+              const primaryStrikeOpts = ["OTM 3", "OTM 2", "OTM 1", "ATM", "ITM 1", "ITM 2", "ITM 3"];
+              const strikeOpts = primaryStrikeOpts.includes(leg.strikeSelection)
+                ? primaryStrikeOpts
+                : [...primaryStrikeOpts, leg.strikeSelection];
 
               return (
                 <div

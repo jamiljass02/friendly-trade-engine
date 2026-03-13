@@ -54,6 +54,7 @@ const Options = () => {
 
   const handleExpiryChange = useCallback((date: Date) => {
     setExpiryDate(date);
+    setSelectedLegs([]);
   }, []);
 
   return (

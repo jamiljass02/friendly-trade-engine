@@ -23,11 +23,11 @@ const Options = () => {
   const [qty, setQty] = useState(defaultLot);
 
   const handleStrikeSelect = useCallback(
-    (strike: number, type: "CE" | "PE", ltp: number) => {
+    (strike: number, type: "CE" | "PE", ltp: number, tradingSymbol?: string) => {
       setSelectedLegs((prev) => {
         const exists = prev.some((l) => l.strike === strike && l.type === type);
         if (exists) return prev.filter((l) => !(l.strike === strike && l.type === type));
-        return [...prev, { strike, type, ltp, action: "SELL" as const }];
+        return [...prev, { strike, type, ltp, action: "SELL" as const, tradingSymbol }];
       });
     },
     []

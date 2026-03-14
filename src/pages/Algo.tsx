@@ -398,18 +398,52 @@ const Algo = () => {
     });
   };
 
-  const saveStrategy = () => {
-    if (!editingStrategy) return;
-    setStrategies((prev) => {
-      const idx = prev.findIndex((s) => s.id === editingStrategy.id);
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = editingStrategy;
-        return updated;
+  const saveStrategy = async () => {
+    if (!editingStrategy || !user) return;
+    try {
+      const payload = {
+        user_id: user.id,
+        name: editingStrategy.name,
+        instrument: editingStrategy.instrument,
+        legs: editingStrategy.legs as any,
+        entry_conditions: editingStrategy.entryConditions as any,
+        exit_conditions: editingStrategy.exitConditions as any,
+        status: editingStrategy.status,
+        recurrence: editingStrategy.recurrence,
+        telegram_alert: editingStrategy.telegramAlert,
+        backtest_result: editingStrategy.backtestResult as any || null,
+      };
+
+      // Check if strategy already exists in DB
+      const existing = strategies.find((s) => s.id === editingStrategy.id);
+      if (existing) {
+        const { error } = await supabase
+          .from('algo_strategies')
+          .update(payload)
+          .eq('id', editingStrategy.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from('algo_strategies')
+          .insert({ ...payload, id: editingStrategy.id })
+          .select()
+          .single();
+        if (error) throw error;
       }
-      return [...prev, editingStrategy];
-    });
-    setEditingStrategy(null);
+
+      setStrategies((prev) => {
+        const idx = prev.findIndex((s) => s.id === editingStrategy.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = editingStrategy;
+          return updated;
+        }
+        return [...prev, editingStrategy];
+      });
+      setEditingStrategy(null);
+    } catch (err: any) {
+      console.error('Failed to save strategy:', err);
+    }
   };
 
   const handleBacktest = () => {

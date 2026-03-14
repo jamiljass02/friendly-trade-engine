@@ -231,7 +231,7 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
 ];
 
 function generateId() {
-  return Math.random().toString(36).substring(2, 10);
+  return crypto.randomUUID();
 }
 
 const Algo = () => {
@@ -319,11 +319,12 @@ const Algo = () => {
 
   const addLeg = () => {
     if (!editingStrategy) return;
+    const firstLeg = editingStrategy.legs[0];
     setEditingStrategy({
       ...editingStrategy,
       legs: [
         ...editingStrategy.legs,
-        { id: generateId(), segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week", premiumMode: "none" },
+        { id: generateId(), segment: firstLeg?.segment || "OPT", side: "BUY", optionType: firstLeg?.optionType || "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: firstLeg?.expiry || "current_week", premiumMode: "none" },
       ],
     });
   };

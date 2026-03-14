@@ -123,7 +123,7 @@ const StrategyExecutor = ({
     let tsym = buildTradingSymbol(leg);
 
     try {
-      const chainResult = await getOptionChain(instrument, leg.strike, 12);
+      const chainResult = await getOptionChain(instrument, leg.strike, 12, inst?.exchange);
       const values = Array.isArray((chainResult as any)?.values)
         ? (chainResult as any).values
         : Array.isArray(chainResult)

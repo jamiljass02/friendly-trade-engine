@@ -238,12 +238,49 @@ const Algo = () => {
   const { schedules, executions, loading, createSchedule, updateSchedule, deleteSchedule, refresh } = useScheduledTrades();
   const { isConnected } = useBroker();
   const { runBacktest } = useBacktesting();
+  const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState("builder");
   const [strategies, setStrategies] = useState<AlgoStrategy[]>([]);
   const [editingStrategy, setEditingStrategy] = useState<AlgoStrategy | null>(null);
   const [showPresets, setShowPresets] = useState(false);
   const [btRunning, setBtRunning] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
+
+  // Load strategies from database
+  useEffect(() => {
+    if (!user) return;
+    const loadStrategies = async () => {
+      setDbLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('algo_strategies')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (data) {
+          setStrategies(data.map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            instrument: row.instrument,
+            legs: row.legs || [],
+            entryConditions: row.entry_conditions || [],
+            exitConditions: row.exit_conditions || [],
+            status: row.status,
+            recurrence: row.recurrence,
+            telegramAlert: row.telegram_alert,
+            createdAt: new Date(row.created_at),
+            backtestResult: row.backtest_result || undefined,
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to load strategies:', err);
+      } finally {
+        setDbLoading(false);
+      }
+    };
+    loadStrategies();
+  }, [user]);
 
   const niftyExpiries = useMemo(() => getUpcomingExpiries(true, 6), []);
   const daysToExpiry = niftyExpiries[0] ? getDaysToExpiry(niftyExpiries[0].date) : 0;

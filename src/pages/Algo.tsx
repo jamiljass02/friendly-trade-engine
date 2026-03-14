@@ -231,7 +231,7 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
 ];
 
 function generateId() {
-  return Math.random().toString(36).substring(2, 10);
+  return crypto.randomUUID();
 }
 
 const Algo = () => {

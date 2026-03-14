@@ -381,7 +381,7 @@ const EnhancedStrategyBuilder = () => {
           const optionType = leg.optionType;
 
           try {
-            const chainResult = await getOptionChain(leg.underlying, strike, 12);
+            const chainResult = await getOptionChain(leg.underlying, strike, 12, exchange);
             const values = Array.isArray((chainResult as any)?.values)
               ? (chainResult as any).values
               : Array.isArray(chainResult)

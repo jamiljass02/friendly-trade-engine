@@ -163,27 +163,32 @@ const EnhancedStrategyBuilder = () => {
   }, []);
 
   const addLeg = useCallback(
-    (underlying = "NIFTY", type: "index_option" | "stock_option" | "index_future" | "stock_future" = "index_option") => {
-      const inst = getInstrument(underlying);
-      const spot = getDefaultSpotPrice(underlying);
+    (underlying?: string, type?: "index_option" | "stock_option" | "index_future" | "stock_future") => {
+      // Default to first leg's underlying if not specified
+      const resolvedUnderlying = underlying || (legs.length > 0 ? legs[0].underlying : "NIFTY");
+      const firstLeg = legs.length > 0 ? legs[0] : null;
+      const resolvedType = type || (firstLeg?.instrumentType || "index_option");
+      
+      const inst = getInstrument(resolvedUnderlying);
+      const spot = getDefaultSpotPrice(resolvedUnderlying);
       const step = inst?.strikeStep || 50;
       const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
       const expiries = getUpcomingExpiries(isWeekly, 4);
       const atmStrike = Math.round(spot / step) * step;
-      const isFuture = type.includes("future");
+      const isFuture = resolvedType.includes("future");
       const mockLTP = isFuture ? spot : 50 + Math.random() * 100;
 
       const newLeg: StrategyLeg = {
         id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-        underlying,
-        instrumentType: type,
+        underlying: resolvedUnderlying,
+        instrumentType: resolvedType,
         action: "SELL",
         optionType: isFuture ? undefined : "CE",
         futureType: isFuture ? "near" : undefined,
         strikeMode: "spot_based",
         strikeSelection: "ATM",
         strike: isFuture ? undefined : atmStrike,
-        expiry: expiries[0]?.label || "",
+        expiry: firstLeg?.expiry || expiries[0]?.label || "",
         lots: 1,
         entryType: "MKT",
         validity: "DAY",
@@ -191,7 +196,7 @@ const EnhancedStrategyBuilder = () => {
       };
       setLegs((prev) => [...prev, newLeg]);
     },
-    []
+    [legs]
   );
 
   const removeLeg = useCallback((id: string) => {

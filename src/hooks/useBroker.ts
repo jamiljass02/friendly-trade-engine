@@ -112,7 +112,7 @@ export function useBroker() {
     callBrokerAPI("market_data", { token, exchange });
 
   const searchScrip = (searchText: string, exchange?: string) =>
-    callBrokerAPI("search_scrip", { search_text: searchText, exchange });
+    callBrokerAPI("search_scrip", { search_text: searchText, exchange: exchange || "NFO" });
 
   const getOptionChain = (symbol: string, strikePrice: number, count?: number, exchange?: string) =>
     callBrokerAPI("option_chain", { symbol, strike_price: strikePrice, count, exchange });

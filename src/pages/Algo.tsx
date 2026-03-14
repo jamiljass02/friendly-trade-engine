@@ -46,6 +46,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useScheduledTrades } from "@/hooks/useScheduledTrades";
 import { useBroker } from "@/hooks/useBroker";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { getUpcomingExpiries, getDaysToExpiry } from "@/lib/expiry-utils";
 import {
   LineChart,

@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      algo_strategies: {
+        Row: {
+          backtest_result: Json | null
+          created_at: string
+          entry_conditions: Json
+          exit_conditions: Json
+          id: string
+          instrument: string
+          legs: Json
+          name: string
+          recurrence: string
+          status: string
+          telegram_alert: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          backtest_result?: Json | null
+          created_at?: string
+          entry_conditions?: Json
+          exit_conditions?: Json
+          id?: string
+          instrument?: string
+          legs?: Json
+          name?: string
+          recurrence?: string
+          status?: string
+          telegram_alert?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          backtest_result?: Json | null
+          created_at?: string
+          entry_conditions?: Json
+          exit_conditions?: Json
+          id?: string
+          instrument?: string
+          legs?: Json
+          name?: string
+          recurrence?: string
+          status?: string
+          telegram_alert?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       broker_credentials: {
         Row: {
           api_key: string

@@ -713,8 +713,12 @@ const EnhancedStrategyBuilder = () => {
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
               const expiries = getUpcomingExpiries(isWeekly, 4);
 
-              // Keep ATM centered between nearby OTM/ITM levels
-              const primaryStrikeOpts = ["OTM 3", "OTM 2", "OTM 1", "ATM", "ITM 1", "ITM 2", "ITM 3"];
+              // Keep ATM centered between nearby OTM/ITM levels (1-20)
+              const primaryStrikeOpts = [
+                ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
+                "ATM",
+                ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
+              ];
               const strikeOpts = primaryStrikeOpts.includes(leg.strikeSelection)
                 ? primaryStrikeOpts
                 : [...primaryStrikeOpts, leg.strikeSelection];

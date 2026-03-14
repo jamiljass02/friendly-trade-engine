@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import AppLayout from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useScheduledTrades } from "@/hooks/useScheduledTrades";
 import { useBroker } from "@/hooks/useBroker";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { getUpcomingExpiries, getDaysToExpiry } from "@/lib/expiry-utils";
 import {
   LineChart,
@@ -111,15 +113,11 @@ interface AlgoStrategy {
 
 // ── Constants ──
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
-const lotSizes: Record<string, number> = { NIFTY: 50, BANKNIFTY: 15, SENSEX: 10, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 10 };
+const lotSizes: Record<string, number> = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 15 };
 const strikeOptions = [
-  "OTM 3",
-  "OTM 2",
-  "OTM 1",
+  ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
   "ATM",
-  "ITM 1",
-  "ITM 2",
-  "ITM 3",
+  ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
   "CUSTOM",
 ];
 const premiumModes = [
@@ -240,12 +238,49 @@ const Algo = () => {
   const { schedules, executions, loading, createSchedule, updateSchedule, deleteSchedule, refresh } = useScheduledTrades();
   const { isConnected } = useBroker();
   const { runBacktest } = useBacktesting();
+  const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState("builder");
   const [strategies, setStrategies] = useState<AlgoStrategy[]>([]);
   const [editingStrategy, setEditingStrategy] = useState<AlgoStrategy | null>(null);
   const [showPresets, setShowPresets] = useState(false);
   const [btRunning, setBtRunning] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
+
+  // Load strategies from database
+  useEffect(() => {
+    if (!user) return;
+    const loadStrategies = async () => {
+      setDbLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('algo_strategies')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (data) {
+          setStrategies(data.map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            instrument: row.instrument,
+            legs: row.legs || [],
+            entryConditions: row.entry_conditions || [],
+            exitConditions: row.exit_conditions || [],
+            status: row.status,
+            recurrence: row.recurrence,
+            telegramAlert: row.telegram_alert,
+            createdAt: new Date(row.created_at),
+            backtestResult: row.backtest_result || undefined,
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to load strategies:', err);
+      } finally {
+        setDbLoading(false);
+      }
+    };
+    loadStrategies();
+  }, [user]);
 
   const niftyExpiries = useMemo(() => getUpcomingExpiries(true, 6), []);
   const daysToExpiry = niftyExpiries[0] ? getDaysToExpiry(niftyExpiries[0].date) : 0;
@@ -363,18 +398,52 @@ const Algo = () => {
     });
   };
 
-  const saveStrategy = () => {
-    if (!editingStrategy) return;
-    setStrategies((prev) => {
-      const idx = prev.findIndex((s) => s.id === editingStrategy.id);
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = editingStrategy;
-        return updated;
+  const saveStrategy = async () => {
+    if (!editingStrategy || !user) return;
+    try {
+      const payload = {
+        user_id: user.id,
+        name: editingStrategy.name,
+        instrument: editingStrategy.instrument,
+        legs: editingStrategy.legs as any,
+        entry_conditions: editingStrategy.entryConditions as any,
+        exit_conditions: editingStrategy.exitConditions as any,
+        status: editingStrategy.status,
+        recurrence: editingStrategy.recurrence,
+        telegram_alert: editingStrategy.telegramAlert,
+        backtest_result: editingStrategy.backtestResult as any || null,
+      };
+
+      // Check if strategy already exists in DB
+      const existing = strategies.find((s) => s.id === editingStrategy.id);
+      if (existing) {
+        const { error } = await supabase
+          .from('algo_strategies')
+          .update(payload)
+          .eq('id', editingStrategy.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from('algo_strategies')
+          .insert({ ...payload, id: editingStrategy.id })
+          .select()
+          .single();
+        if (error) throw error;
       }
-      return [...prev, editingStrategy];
-    });
-    setEditingStrategy(null);
+
+      setStrategies((prev) => {
+        const idx = prev.findIndex((s) => s.id === editingStrategy.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = editingStrategy;
+          return updated;
+        }
+        return [...prev, editingStrategy];
+      });
+      setEditingStrategy(null);
+    } catch (err: any) {
+      console.error('Failed to save strategy:', err);
+    }
   };
 
   const handleBacktest = () => {
@@ -1062,7 +1131,10 @@ const Algo = () => {
                           size="sm"
                           variant="ghost"
                           className="text-xs h-7"
-                          onClick={() => setStrategies((p) => p.filter((s) => s.id !== strat.id))}
+                          onClick={async () => {
+                            await supabase.from('algo_strategies').delete().eq('id', strat.id);
+                            setStrategies((p) => p.filter((s) => s.id !== strat.id));
+                          }}
                         >
                           <Trash2 className="w-3 h-3 text-muted-foreground" />
                         </Button>

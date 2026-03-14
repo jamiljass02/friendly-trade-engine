@@ -1131,7 +1131,10 @@ const Algo = () => {
                           size="sm"
                           variant="ghost"
                           className="text-xs h-7"
-                          onClick={() => setStrategies((p) => p.filter((s) => s.id !== strat.id))}
+                          onClick={async () => {
+                            await supabase.from('algo_strategies').delete().eq('id', strat.id);
+                            setStrategies((p) => p.filter((s) => s.id !== strat.id));
+                          }}
                         >
                           <Trash2 className="w-3 h-3 text-muted-foreground" />
                         </Button>

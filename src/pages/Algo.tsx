@@ -230,6 +230,7 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     ],
     recurrence: "weekly",
     telegramAlert: true,
+    moveToCost: true,
   },
 ];
 

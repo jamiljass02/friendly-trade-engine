@@ -150,6 +150,7 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     ],
     recurrence: "daily",
     telegramAlert: true,
+    moveToCost: true,
   },
   {
     name: "Short Strangle",

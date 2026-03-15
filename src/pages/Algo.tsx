@@ -107,6 +107,7 @@ interface AlgoStrategy {
   status: "draft" | "backtested" | "deployed" | "paused";
   recurrence: "once" | "daily" | "weekly" | "monthly";
   telegramAlert: boolean;
+  moveToCost: boolean;
   createdAt: Date;
   backtestResult?: BacktestSummary;
 }

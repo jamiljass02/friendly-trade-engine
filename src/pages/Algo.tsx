@@ -214,6 +214,7 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
     ],
     recurrence: "daily",
     telegramAlert: false,
+    moveToCost: true,
   },
   {
     name: "Expiry Day Straddle",

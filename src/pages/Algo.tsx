@@ -611,6 +611,16 @@ const Algo = () => {
                         >
                           {editingStrategy.telegramAlert ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
                         </button>
+                        <button
+                          onClick={() => setEditingStrategy({ ...editingStrategy, moveToCost: !editingStrategy.moveToCost })}
+                          className={cn(
+                            "p-1.5 rounded-md border transition-colors text-[10px] font-semibold px-2",
+                            editingStrategy.moveToCost ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                          )}
+                          title="Move to Cost: When one leg's SL is hit, move remaining legs' SL to entry price"
+                        >
+                          M2C
+                        </button>
                       </div>
                     </div>
                   </CardContent>

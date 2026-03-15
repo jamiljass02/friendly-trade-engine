@@ -182,8 +182,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
       { id: "2", type: "mtm_profit", value: "3000" },
       { id: "3", type: "time", value: "15:20" },
     ],
-    recurrence: "daily",
     telegramAlert: true,
+    moveToCost: true,
   },
   {
     name: "Calendar Spread",

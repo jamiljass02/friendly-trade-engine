@@ -58,7 +58,14 @@ Deno.serve(async (req) => {
           body: "jData=" + JSON.stringify(loginPayload),
         });
 
-        loginData = await loginRes.json();
+        const loginText = await loginRes.text();
+        try {
+          loginData = JSON.parse(loginText);
+        } catch {
+          console.error("Non-JSON login response:", loginText.slice(0, 300));
+          loginData = { stat: "Not_Ok", emsg: "Broker server returned an invalid response. Please try again in a moment." };
+          continue;
+        }
 
         if (String(loginData?.stat ?? "").toUpperCase() === "OK") {
           break;

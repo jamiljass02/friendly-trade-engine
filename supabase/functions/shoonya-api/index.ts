@@ -39,8 +39,10 @@ Deno.serve(async (req) => {
         : [String(user_code).trim(), `${String(user_code).trim()}_U`, "NA"];
 
       let loginData: any = null;
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const isGatewayHtml = (text: string) => /502\s+Bad\s+Gateway|503\s+Service\s+Temporarily\s+Unavailable|<html/i.test(text);
 
-      for (const vc of vcCandidates) {
+      const attemptLogin = async (vc: string) => {
         const loginPayload = {
           source: "API",
           apkversion: "1.0.0",
@@ -52,22 +54,67 @@ Deno.serve(async (req) => {
           imei: imei || "tradex-app",
         };
 
-        const loginRes = await fetch(`${SHOONYA_BASE}/QuickAuth`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "jData=" + JSON.stringify(loginPayload),
-        });
+        let lastResult: any = { stat: "Not_Ok", emsg: "Login failed" };
 
-        const loginText = await loginRes.text();
-        try {
-          loginData = JSON.parse(loginText);
-        } catch {
-          console.error("Non-JSON login response:", loginText.slice(0, 300));
-          loginData = { stat: "Not_Ok", emsg: "Broker server returned an invalid response. Please try again in a moment." };
-          continue;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const loginRes = await fetch(`${SHOONYA_BASE}/QuickAuth`, {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: "jData=" + JSON.stringify(loginPayload),
+            });
+
+            const loginText = await loginRes.text();
+
+            try {
+              lastResult = JSON.parse(loginText);
+            } catch {
+              console.error("Non-JSON login response:", loginText.slice(0, 300));
+              if ((isGatewayHtml(loginText) || loginRes.status >= 500) && attempt < 3) {
+                await sleep(350 * attempt);
+                continue;
+              }
+
+              lastResult = {
+                stat: "Not_Ok",
+                emsg: isGatewayHtml(loginText) || loginRes.status >= 500
+                  ? `Broker server is temporarily unavailable (${loginRes.status || 502}). Please retry in 10–20 seconds.`
+                  : "Broker server returned an invalid response. Please try again in a moment.",
+              };
+            }
+
+            if (!loginRes.ok && attempt < 3) {
+              await sleep(350 * attempt);
+              continue;
+            }
+
+            return lastResult;
+          } catch (err) {
+            console.error("Login request failed:", err);
+            if (attempt < 3) {
+              await sleep(350 * attempt);
+              continue;
+            }
+
+            return {
+              stat: "Not_Ok",
+              emsg: "Unable to reach broker server. Check your connection and retry.",
+            };
+          }
         }
 
+        return lastResult;
+      };
+
+      for (const vc of vcCandidates) {
+        loginData = await attemptLogin(vc);
+
         if (String(loginData?.stat ?? "").toUpperCase() === "OK") {
+          break;
+        }
+
+        const emsg = String(loginData?.emsg ?? "");
+        if (/temporarily unavailable|unable to reach/i.test(emsg)) {
           break;
         }
       }

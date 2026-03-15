@@ -197,8 +197,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
       { id: "1", type: "target_pct", value: "50" },
       { id: "2", type: "sl_pct", value: "30" },
     ],
-    recurrence: "weekly",
     telegramAlert: true,
+    moveToCost: true,
   },
   {
     name: "Bull Put Spread",

@@ -164,8 +164,8 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
       { id: "1", type: "sl_pct", value: "50" },
       { id: "2", type: "time", value: "15:15" },
     ],
-    recurrence: "daily",
     telegramAlert: true,
+    moveToCost: true,
   },
   {
     name: "Iron Condor",

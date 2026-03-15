@@ -300,6 +300,7 @@ const Algo = () => {
     status: "draft",
     recurrence: "daily",
     telegramAlert: true,
+    moveToCost: true,
     createdAt: new Date(),
   });
 

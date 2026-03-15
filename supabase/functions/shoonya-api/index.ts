@@ -106,7 +106,13 @@ Deno.serve(async (req) => {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "jData=" + JSON.stringify({ ...payload, uid }) + `&jKey=${session_token}`,
       });
-      return await res.json();
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        console.error(`Non-JSON response from ${endpoint}:`, text.slice(0, 300));
+        return { stat: "Not_Ok", emsg: "Broker server returned an invalid response. Please retry." };
+      }
     };
 
     let result;

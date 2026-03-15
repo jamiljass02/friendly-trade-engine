@@ -273,6 +273,7 @@ const Algo = () => {
             status: row.status,
             recurrence: row.recurrence,
             telegramAlert: row.telegram_alert,
+            moveToCost: row.backtest_result?.moveToCost ?? true,
             createdAt: new Date(row.created_at),
             backtestResult: row.backtest_result || undefined,
           })));

@@ -121,6 +121,7 @@ const StrategyExecutor = ({
     if (leg.tradingSymbol) return leg.tradingSymbol;
 
     let tsym = buildTradingSymbol(leg);
+    const expiryCode = expiryDate ? formatExpiryForSymbol(expiryDate) : null;
 
     try {
       const chainResult = await getOptionChain(instrument, leg.strike, 12, inst?.exchange);
@@ -133,7 +134,9 @@ const StrategyExecutor = ({
       const exactFromChain = values.find((row: any) => {
         const strike = Number(row.strprc ?? row.strike);
         const type = String(row.optt ?? "").toUpperCase();
-        return strike === leg.strike && type === leg.type && row.tsym;
+        const rowTsym = String(row.tsym ?? "");
+        const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
+        return strike === leg.strike && type === leg.type && row.tsym && expiryMatches;
       });
 
       if (exactFromChain?.tsym) {

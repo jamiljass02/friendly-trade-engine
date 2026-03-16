@@ -23,7 +23,7 @@ interface Template {
 function makeExpiry(underlying: string): string {
   const inst = getInstrument(underlying);
   const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-  const expiries = getUpcomingExpiries(isWeekly, 2);
+  const expiries = getUpcomingExpiries(isWeekly, 2, underlying);
   return expiries[0]?.label || "";
 }
 

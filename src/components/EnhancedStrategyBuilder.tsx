@@ -121,6 +121,7 @@ const EnhancedStrategyBuilder = () => {
   const [strategyTypeFilter, setStrategyTypeFilter] = useState<StrategyTypeFilter>("all");
   const [sectorFilter, setSectorFilter] = useState<string>("all");
   const [expiryWeekFilter, setExpiryWeekFilter] = useState<string>("all");
+  const [savedStrategies, setSavedStrategies] = useState<SavedStrategy[]>([]);
 
   // For payoff chart, derive simplified legs
   const payoffLegs = useMemo(

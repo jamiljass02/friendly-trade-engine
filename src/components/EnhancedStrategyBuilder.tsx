@@ -52,6 +52,7 @@ export interface StrategyLeg {
 
 type InstrumentFilter = "all" | "index" | "stock";
 type StrategyTypeFilter = "all" | "options" | "futures" | "mixed";
+type SavedStrategy = { id: string; name: string; legs: StrategyLeg[]; savedAt: string };
 
 const SECTORS = [...new Set(FNO_STOCKS.map((s) => s.industry).filter(Boolean))] as string[];
 

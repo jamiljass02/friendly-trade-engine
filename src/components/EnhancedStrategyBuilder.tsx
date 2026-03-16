@@ -158,9 +158,17 @@ const EnhancedStrategyBuilder = () => {
       .slice(0, 12);
   }, [stockSearch, sectorFilter]);
 
-  // Available expiry weeks for filter
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("strategy-builder-saves");
+      setSavedStrategies(stored ? JSON.parse(stored) : []);
+    } catch {
+      setSavedStrategies([]);
+    }
+  }, []);
+
   const availableExpiries = useMemo(() => {
-    const expiries = getUpcomingExpiries(true, 8);
+    const expiries = getUpcomingExpiries(true, 8, "NIFTY");
     return expiries.map((e) => e.label);
   }, []);
 

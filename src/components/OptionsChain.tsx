@@ -159,7 +159,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
       }
 
       const atmStrike = Math.round(spot / strikeStep) * strikeStep;
-      const chainResult = await getOptionChain(selectedSymbol, atmStrike, 20);
+      const chainResult = await getOptionChain(selectedSymbol, atmStrike, 20, instrument.exchange);
 
       if (chainResult && Array.isArray(chainResult.values || chainResult)) {
         const values = chainResult.values || chainResult;

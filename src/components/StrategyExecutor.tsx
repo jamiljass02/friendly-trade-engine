@@ -158,10 +158,12 @@ const StrategyExecutor = ({
         const match = values.find((v: any) => {
           const strike = Number(v.strprc ?? v.strike);
           const type = String(v.optt ?? "").toUpperCase();
+          const rowTsym = String(v.tsym ?? "");
+          const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
           if (Number.isFinite(strike) && type) {
-            return strike === leg.strike && type === leg.type && v.tsym;
+            return strike === leg.strike && type === leg.type && v.tsym && expiryMatches;
           }
-          return v.tsym?.includes(String(leg.strike)) && v.tsym?.includes(leg.type === "CE" ? "C" : "P");
+          return expiryMatches && rowTsym.includes(String(leg.strike)) && rowTsym.includes(leg.type === "CE" ? "C" : "P");
         });
         if (match?.tsym) tsym = match.tsym;
       }

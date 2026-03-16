@@ -762,7 +762,7 @@ const EnhancedStrategyBuilder = () => {
               const step = inst?.strikeStep || 50;
               const isFuture = leg.instrumentType.includes("future");
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-              const expiries = getUpcomingExpiries(isWeekly, 4);
+              const expiries = getUpcomingExpiries(isWeekly, 4, leg.underlying);
 
               // Keep ATM centered between nearby OTM/ITM levels (1-20)
               const primaryStrikeOpts = [

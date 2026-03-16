@@ -6,29 +6,36 @@
 
 import { format, addDays, startOfMonth, endOfMonth, getDay, addMonths, isAfter, isBefore, startOfDay } from "date-fns";
 
-/**
- * Get all Thursdays in a given month
- */
-function getThursdaysInMonth(year: number, month: number): Date[] {
+const DEFAULT_EXPIRY_WEEKDAY = 4; // Thursday
+const INSTRUMENT_EXPIRY_WEEKDAY: Record<string, number> = {
+  NIFTY: 2, // Tuesday
+  SENSEX: 4, // Thursday
+};
+
+function getExpiryWeekday(instrumentSymbol?: string): number {
+  if (!instrumentSymbol) return DEFAULT_EXPIRY_WEEKDAY;
+  return INSTRUMENT_EXPIRY_WEEKDAY[instrumentSymbol.toUpperCase()] ?? DEFAULT_EXPIRY_WEEKDAY;
+}
+
+function getWeekdaysInMonth(year: number, month: number, weekday: number): Date[] {
   const start = startOfMonth(new Date(year, month));
   const end = endOfMonth(new Date(year, month));
-  const thursdays: Date[] = [];
+  const matches: Date[] = [];
   let current = start;
+
   while (!isAfter(current, end)) {
-    if (getDay(current) === 4) {
-      thursdays.push(current);
+    if (getDay(current) === weekday) {
+      matches.push(current);
     }
     current = addDays(current, 1);
   }
-  return thursdays;
+
+  return matches;
 }
 
-/**
- * Get the last Thursday of a month (monthly expiry)
- */
-function getLastThursday(year: number, month: number): Date {
-  const thursdays = getThursdaysInMonth(year, month);
-  return thursdays[thursdays.length - 1];
+function getLastExpiryWeekday(year: number, month: number, instrumentSymbol?: string): Date {
+  const weekdayMatches = getWeekdaysInMonth(year, month, getExpiryWeekday(instrumentSymbol));
+  return weekdayMatches[weekdayMatches.length - 1];
 }
 
 export interface ExpiryDate {
@@ -46,8 +53,9 @@ export interface ExpiryDate {
  * Generate upcoming expiry dates for an instrument
  * @param weeklyExpiry - Whether the instrument has weekly expiries
  * @param count - Number of expiries to generate
+ * @param instrumentSymbol - Underlying symbol for exchange-specific expiry weekday rules
  */
-export function getUpcomingExpiries(weeklyExpiry: boolean, count: number = 12): ExpiryDate[] {
+export function getUpcomingExpiries(weeklyExpiry: boolean, count: number = 12, instrumentSymbol?: string): ExpiryDate[] {
   const today = startOfDay(new Date());
   const expiries: ExpiryDate[] = [];
 

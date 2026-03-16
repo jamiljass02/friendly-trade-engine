@@ -432,7 +432,7 @@ const EnhancedStrategyBuilder = () => {
 
           if (tsym === leg.underlying) {
             const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-            const expiries = getUpcomingExpiries(isWeekly, 8);
+            const expiries = getUpcomingExpiries(isWeekly, 8, leg.underlying);
             const expiryObj = expiries.find((e) => e.label === leg.expiry) || expiries[0];
             const expiryCode = formatExpiryForSymbol(expiryObj?.date || new Date());
             const constructed = `${leg.underlying}${expiryCode}${optionType === "CE" ? "C" : "P"}${strike}`;

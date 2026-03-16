@@ -59,14 +59,14 @@ export function getUpcomingExpiries(weeklyExpiry: boolean, count: number = 12, i
   const today = startOfDay(new Date());
   const expiries: ExpiryDate[] = [];
 
+  const expiryWeekday = getExpiryWeekday(instrumentSymbol);
+
   if (weeklyExpiry) {
-    // Generate weekly Thursdays for next 3 months
     let current = today;
     while (expiries.length < count) {
-      if (getDay(current) === 4) {
-        // Check if it's also a monthly expiry (last Thursday of month)
-        const lastThurs = getLastThursday(current.getFullYear(), current.getMonth());
-        const isMonthly = current.getTime() === lastThurs.getTime();
+      if (getDay(current) === expiryWeekday) {
+        const monthlyExpiry = getLastExpiryWeekday(current.getFullYear(), current.getMonth(), instrumentSymbol);
+        const isMonthly = current.getTime() === monthlyExpiry.getTime();
 
         if (!isBefore(current, today)) {
           expiries.push({
@@ -84,12 +84,11 @@ export function getUpcomingExpiries(weeklyExpiry: boolean, count: number = 12, i
       current = addDays(current, 1);
     }
   } else {
-    // Monthly expiries only
     let monthOffset = 0;
     while (expiries.length < count) {
       const targetDate = addMonths(today, monthOffset);
-      const lastThurs = getLastThursday(targetDate.getFullYear(), targetDate.getMonth());
-      if (!isBefore(lastThurs, today)) {
+      const monthlyExpiry = getLastExpiryWeekday(targetDate.getFullYear(), targetDate.getMonth(), instrumentSymbol);
+      if (!isBefore(monthlyExpiry, today)) {
         expiries.push({
           date: lastThurs,
           label: format(lastThurs, "d MMM"),

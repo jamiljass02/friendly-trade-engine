@@ -183,7 +183,7 @@ const EnhancedStrategyBuilder = () => {
       const spot = getDefaultSpotPrice(resolvedUnderlying);
       const step = inst?.strikeStep || 50;
       const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-      const expiries = getUpcomingExpiries(isWeekly, 4);
+      const expiries = getUpcomingExpiries(isWeekly, 4, resolvedUnderlying);
       const atmStrike = Math.round(spot / step) * step;
       const isFuture = resolvedType.includes("future");
       const mockLTP = isFuture ? spot : 50 + Math.random() * 100;

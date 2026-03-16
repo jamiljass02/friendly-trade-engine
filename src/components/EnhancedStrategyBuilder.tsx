@@ -529,6 +529,23 @@ const EnhancedStrategyBuilder = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {savedStrategies.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const selected = savedStrategies.find((item) => item.id === e.target.value);
+                  if (!selected) return;
+                  setStrategyName(selected.name);
+                  setLegs(selected.legs);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium border border-border/50 outline-none"
+              >
+                <option value="">Load Saved</option>
+                {savedStrategies.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => setShowTemplates(!showTemplates)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors"
@@ -536,7 +553,7 @@ const EnhancedStrategyBuilder = () => {
               <Zap className="w-3 h-3" />
               Templates
             </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
+            <button onClick={handleSaveStrategy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
               <Save className="w-3 h-3" />
               Save
             </button>

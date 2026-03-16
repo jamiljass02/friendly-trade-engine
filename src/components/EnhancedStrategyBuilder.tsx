@@ -253,6 +253,25 @@ const EnhancedStrategyBuilder = () => {
     []
   );
 
+  const handleSaveStrategy = useCallback(() => {
+    if (legs.length === 0) {
+      toast({ title: "Nothing to save", description: "Add at least one leg first.", variant: "destructive" });
+      return;
+    }
+
+    const payload: SavedStrategy = {
+      id: crypto.randomUUID(),
+      name: strategyName.trim() || "Custom Strategy",
+      legs,
+      savedAt: new Date().toISOString(),
+    };
+
+    const next = [payload, ...savedStrategies.filter((item) => item.name !== payload.name)].slice(0, 12);
+    localStorage.setItem("strategy-builder-saves", JSON.stringify(next));
+    setSavedStrategies(next);
+    toast({ title: "Strategy saved", description: `${payload.name} is ready to load and execute anytime.` });
+  }, [legs, strategyName, savedStrategies, toast]);
+
   // Combined Greeks
   const combinedGreeks = useMemo(() => {
     let delta = 0,

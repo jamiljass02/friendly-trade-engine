@@ -90,9 +90,9 @@ export function getUpcomingExpiries(weeklyExpiry: boolean, count: number = 12, i
       const monthlyExpiry = getLastExpiryWeekday(targetDate.getFullYear(), targetDate.getMonth(), instrumentSymbol);
       if (!isBefore(monthlyExpiry, today)) {
         expiries.push({
-          date: lastThurs,
-          label: format(lastThurs, "d MMM"),
-          fullLabel: format(lastThurs, "d MMM yyyy"),
+          date: monthlyExpiry,
+          label: format(monthlyExpiry, "d MMM"),
+          fullLabel: format(monthlyExpiry, "d MMM yyyy"),
           isWeekly: false,
           isMonthly: true,
           isCurrent: false,

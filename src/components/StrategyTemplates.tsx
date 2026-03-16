@@ -23,7 +23,7 @@ interface Template {
 function makeExpiry(underlying: string): string {
   const inst = getInstrument(underlying);
   const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-  const expiries = getUpcomingExpiries(isWeekly, 2);
+  const expiries = getUpcomingExpiries(isWeekly, 2, underlying);
   return expiries[0]?.label || "";
 }
 
@@ -140,7 +140,7 @@ const templates: Template[] = [
     risk: "defined",
     buildLegs: () => {
       const spot = getDefaultSpotPrice("NIFTY");
-      const expiries = getUpcomingExpiries(true, 4);
+      const expiries = getUpcomingExpiries(true, 4, "NIFTY");
       return [
         { ...SM, underlying: "NIFTY", instrumentType: "index_future", action: "SELL", futureType: "near" as const, expiry: expiries[0]?.label || "", lots: 1, entryType: "MKT", validity: "DAY", ltp: spot },
         { ...SM, underlying: "NIFTY", instrumentType: "index_future", action: "BUY", futureType: "far" as const, expiry: expiries[2]?.label || "", lots: 1, entryType: "MKT", validity: "DAY", ltp: spot + 50 },

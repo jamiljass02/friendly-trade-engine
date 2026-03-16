@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Plus,
   Trash2,
@@ -52,6 +52,7 @@ export interface StrategyLeg {
 
 type InstrumentFilter = "all" | "index" | "stock";
 type StrategyTypeFilter = "all" | "options" | "futures" | "mixed";
+type SavedStrategy = { id: string; name: string; legs: StrategyLeg[]; savedAt: string };
 
 const SECTORS = [...new Set(FNO_STOCKS.map((s) => s.industry).filter(Boolean))] as string[];
 
@@ -120,6 +121,7 @@ const EnhancedStrategyBuilder = () => {
   const [strategyTypeFilter, setStrategyTypeFilter] = useState<StrategyTypeFilter>("all");
   const [sectorFilter, setSectorFilter] = useState<string>("all");
   const [expiryWeekFilter, setExpiryWeekFilter] = useState<string>("all");
+  const [savedStrategies, setSavedStrategies] = useState<SavedStrategy[]>([]);
 
   // For payoff chart, derive simplified legs
   const payoffLegs = useMemo(
@@ -156,9 +158,17 @@ const EnhancedStrategyBuilder = () => {
       .slice(0, 12);
   }, [stockSearch, sectorFilter]);
 
-  // Available expiry weeks for filter
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("strategy-builder-saves");
+      setSavedStrategies(stored ? JSON.parse(stored) : []);
+    } catch {
+      setSavedStrategies([]);
+    }
+  }, []);
+
   const availableExpiries = useMemo(() => {
-    const expiries = getUpcomingExpiries(true, 8);
+    const expiries = getUpcomingExpiries(true, 8, "NIFTY");
     return expiries.map((e) => e.label);
   }, []);
 
@@ -173,7 +183,7 @@ const EnhancedStrategyBuilder = () => {
       const spot = getDefaultSpotPrice(resolvedUnderlying);
       const step = inst?.strikeStep || 50;
       const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-      const expiries = getUpcomingExpiries(isWeekly, 4);
+      const expiries = getUpcomingExpiries(isWeekly, 4, resolvedUnderlying);
       const atmStrike = Math.round(spot / step) * step;
       const isFuture = resolvedType.includes("future");
       const mockLTP = isFuture ? spot : 50 + Math.random() * 100;
@@ -242,6 +252,25 @@ const EnhancedStrategyBuilder = () => {
     },
     []
   );
+
+  const handleSaveStrategy = useCallback(() => {
+    if (legs.length === 0) {
+      toast({ title: "Nothing to save", description: "Add at least one leg first.", variant: "destructive" });
+      return;
+    }
+
+    const payload: SavedStrategy = {
+      id: crypto.randomUUID(),
+      name: strategyName.trim() || "Custom Strategy",
+      legs,
+      savedAt: new Date().toISOString(),
+    };
+
+    const next = [payload, ...savedStrategies.filter((item) => item.name !== payload.name)].slice(0, 12);
+    localStorage.setItem("strategy-builder-saves", JSON.stringify(next));
+    setSavedStrategies(next);
+    toast({ title: "Strategy saved", description: `${payload.name} is ready to load and execute anytime.` });
+  }, [legs, strategyName, savedStrategies, toast]);
 
   // Combined Greeks
   const combinedGreeks = useMemo(() => {
@@ -403,7 +432,7 @@ const EnhancedStrategyBuilder = () => {
 
           if (tsym === leg.underlying) {
             const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-            const expiries = getUpcomingExpiries(isWeekly, 8);
+            const expiries = getUpcomingExpiries(isWeekly, 8, leg.underlying);
             const expiryObj = expiries.find((e) => e.label === leg.expiry) || expiries[0];
             const expiryCode = formatExpiryForSymbol(expiryObj?.date || new Date());
             const constructed = `${leg.underlying}${expiryCode}${optionType === "CE" ? "C" : "P"}${strike}`;
@@ -500,6 +529,23 @@ const EnhancedStrategyBuilder = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {savedStrategies.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const selected = savedStrategies.find((item) => item.id === e.target.value);
+                  if (!selected) return;
+                  setStrategyName(selected.name);
+                  setLegs(selected.legs);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium border border-border/50 outline-none"
+              >
+                <option value="">Load Saved</option>
+                {savedStrategies.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => setShowTemplates(!showTemplates)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors"
@@ -507,7 +553,7 @@ const EnhancedStrategyBuilder = () => {
               <Zap className="w-3 h-3" />
               Templates
             </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
+            <button onClick={handleSaveStrategy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80 transition-colors">
               <Save className="w-3 h-3" />
               Save
             </button>
@@ -716,7 +762,7 @@ const EnhancedStrategyBuilder = () => {
               const step = inst?.strikeStep || 50;
               const isFuture = leg.instrumentType.includes("future");
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-              const expiries = getUpcomingExpiries(isWeekly, 4);
+              const expiries = getUpcomingExpiries(isWeekly, 4, leg.underlying);
 
               // Keep ATM centered between nearby OTM/ITM levels (1-20)
               const primaryStrikeOpts = [

@@ -103,7 +103,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
 
   const instrument = getInstrument(selectedSymbol);
   const isWeekly = instrument?.type === "index" ? (instrument as any).weeklyExpiry : false;
-  const expiries = useMemo(() => getUpcomingExpiries(isWeekly, 8), [isWeekly]);
+  const expiries = useMemo(() => getUpcomingExpiries(isWeekly, 8, selectedSymbol), [isWeekly, selectedSymbol]);
   const [selectedExpiry, setSelectedExpiry] = useState<string>("");
 
   useEffect(() => {
@@ -159,7 +159,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
       }
 
       const atmStrike = Math.round(spot / strikeStep) * strikeStep;
-      const chainResult = await getOptionChain(selectedSymbol, atmStrike, 20);
+      const chainResult = await getOptionChain(selectedSymbol, atmStrike, 20, instrument.exchange);
 
       if (chainResult && Array.isArray(chainResult.values || chainResult)) {
         const values = chainResult.values || chainResult;

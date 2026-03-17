@@ -48,6 +48,7 @@ export interface StrategyLeg {
   stopLossPct?: number;
   takeProfitPct?: number;
   premiumTarget?: number;
+  productType: "MIS" | "NRML";
 }
 
 type InstrumentFilter = "all" | "index" | "stock";
@@ -113,6 +114,7 @@ const EnhancedStrategyBuilder = () => {
   const { toast } = useToast();
   const [legs, setLegs] = useState<StrategyLeg[]>([]);
   const [strategyName, setStrategyName] = useState("Custom Strategy");
+  const [globalProduct, setGlobalProduct] = useState<"MIS" | "NRML">("MIS");
   const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>("all");
   const [stockSearch, setStockSearch] = useState("");
   const [showStockSearch, setShowStockSearch] = useState(false);
@@ -203,14 +205,33 @@ const EnhancedStrategyBuilder = () => {
         entryType: "MKT",
         validity: "DAY",
         ltp: Math.round(mockLTP * 100) / 100,
+        productType: globalProduct,
       };
       setLegs((prev) => [...prev, newLeg]);
     },
-    [legs]
+    [legs, globalProduct]
   );
 
   const removeLeg = useCallback((id: string) => {
     setLegs((prev) => prev.filter((l) => l.id !== id));
+  }, []);
+
+  const recalcStrike = useCallback((leg: StrategyLeg, spot: number, step: number): number | undefined => {
+    if (leg.instrumentType.includes("future")) return undefined;
+    const atmStrike = Math.round(spot / step) * step;
+    const sel = leg.strikeSelection;
+    if (sel === "ATM") return atmStrike;
+    if (sel.startsWith("OTM")) {
+      const n = parseInt(sel.split(" ")[1]) || 1;
+      const dir = leg.optionType === "CE" ? 1 : -1;
+      return atmStrike + n * step * dir;
+    }
+    if (sel.startsWith("ITM")) {
+      const n = parseInt(sel.split(" ")[1]) || 1;
+      const dir = leg.optionType === "CE" ? -1 : 1;
+      return atmStrike + n * step * dir;
+    }
+    return leg.strike;
   }, []);
 
   const updateLeg = useCallback(
@@ -219,8 +240,17 @@ const EnhancedStrategyBuilder = () => {
         prev.map((l) => {
           if (l.id !== id) return l;
           const updated = { ...l, ...updates };
+
+          // When optionType changes, recalculate strike for current strikeSelection
+          if (updates.optionType && updates.optionType !== l.optionType && !l.instrumentType.includes("future")) {
+            const spot = getDefaultSpotPrice(updated.underlying);
+            const inst = getInstrument(updated.underlying);
+            const step = inst?.strikeStep || 50;
+            updated.strike = recalcStrike(updated, spot, step);
+          }
+
           // Recalc LTP if strike/underlying changes
-          if (updates.underlying || updates.strike) {
+          if (updates.underlying || updates.strike || updates.optionType) {
             const spot = getDefaultSpotPrice(updated.underlying);
             if (updated.instrumentType.includes("future")) {
               updated.ltp = spot;
@@ -237,7 +267,7 @@ const EnhancedStrategyBuilder = () => {
         })
       );
     },
-    []
+    [recalcStrike]
   );
 
   const applyTemplate = useCallback(
@@ -266,7 +296,7 @@ const EnhancedStrategyBuilder = () => {
       savedAt: new Date().toISOString(),
     };
 
-    const next = [payload, ...savedStrategies.filter((item) => item.name !== payload.name)].slice(0, 12);
+    const next = [payload, ...savedStrategies.filter((item) => item.id !== payload.id && item.name !== payload.name)].slice(0, 30);
     localStorage.setItem("strategy-builder-saves", JSON.stringify(next));
     setSavedStrategies(next);
     toast({ title: "Strategy saved", description: `${payload.name} is ready to load and execute anytime.` });
@@ -481,7 +511,7 @@ const EnhancedStrategyBuilder = () => {
           price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
           transaction_type: leg.action === "BUY" ? "B" : "S",
           order_type: leg.entryType,
-          product: "M",
+          product: leg.productType === "NRML" ? "M" : "I",
           exchange,
         });
       }
@@ -529,6 +559,27 @@ const EnhancedStrategyBuilder = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* MIS / NRML toggle */}
+            <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+              {(["MIS", "NRML"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => {
+                    setGlobalProduct(p);
+                    // Update all existing legs
+                    setLegs((prev) => prev.map((l) => ({ ...l, productType: p })));
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors",
+                    globalProduct === p
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
             {savedStrategies.length > 0 && (
               <select
                 value=""
@@ -764,15 +815,30 @@ const EnhancedStrategyBuilder = () => {
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
               const expiries = getUpcomingExpiries(isWeekly, 4, leg.underlying);
 
-              // Keep ATM centered between nearby OTM/ITM levels (1-20)
-              const primaryStrikeOpts = [
-                ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
-                "ATM",
-                ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
-              ];
+              // For CE: OTM (higher strikes) first, then ATM, then ITM
+              // For PE: ITM (higher strikes) first, then ATM, then OTM  
+              const isPE = leg.optionType === "PE";
+              const primaryStrikeOpts = isPE
+                ? [
+                    ...Array.from({ length: 20 }, (_, i) => `ITM ${20 - i}`),
+                    "ATM",
+                    ...Array.from({ length: 20 }, (_, i) => `OTM ${i + 1}`),
+                  ]
+                : [
+                    ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
+                    "ATM",
+                    ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
+                  ];
               const strikeOpts = primaryStrikeOpts.includes(leg.strikeSelection)
                 ? primaryStrikeOpts
                 : [...primaryStrikeOpts, leg.strikeSelection];
+
+              const getStrikeColor = (s: string) => {
+                if (s === "ATM") return "text-blue-400";
+                if (s.startsWith("OTM")) return "text-loss";
+                if (s.startsWith("ITM")) return "text-profit";
+                return "text-foreground";
+              };
 
               return (
                 <div
@@ -868,9 +934,9 @@ const EnhancedStrategyBuilder = () => {
                             updateLeg(leg.id, { strike: atmStrike + n * step * dir, strikeSelection: sel });
                           }
                         }}
-                        className="bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[90px]"
+                        className={cn("bg-muted text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[90px]", getStrikeColor(leg.strikeSelection))}
                       >
-                        {strikeOpts.map((s) => <option key={s} value={s}>{s}</option>)}
+                        {strikeOpts.map((s) => <option key={s} value={s} className={getStrikeColor(s)}>{s}</option>)}
                       </select>
                     )
                   ) : (

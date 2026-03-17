@@ -1107,21 +1107,66 @@ const Algo = () => {
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <h3 className="text-sm font-semibold text-foreground">{strat.name}</h3>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="outline" className="text-[9px]">{strat.instrument}</Badge>
                             <Badge className={cn("text-[9px]", statusColors[strat.status])}>{strat.status}</Badge>
+                            <Badge variant="outline" className="text-[9px]">{strat.productType}</Badge>
                             <span className="text-[10px] text-muted-foreground">{strat.legs.length} legs</span>
                           </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {/* Paper / Live toggle */}
+                          <div className="flex rounded-md border border-border overflow-hidden">
+                            <button
+                              onClick={() => toggleExecutionMode(strat.id, "paper")}
+                              className={cn(
+                                "text-[9px] px-2 py-1 font-medium transition-colors",
+                                strat.executionMode === "paper" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                              )}
+                            >
+                              Paper
+                            </button>
+                            <button
+                              onClick={() => toggleExecutionMode(strat.id, "live")}
+                              className={cn(
+                                "text-[9px] px-2 py-1 font-medium transition-colors",
+                                strat.executionMode === "live" ? "bg-destructive/10 text-loss" : "text-muted-foreground hover:text-foreground"
+                              )}
+                            >
+                              Live
+                            </button>
+                          </div>
+                          {/* Enable / Disable */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={cn("h-7 text-xs gap-1", strat.status === "deployed" ? "border-success/30" : "")}
+                            onClick={() => {
+                              if (strat.status === "deployed" || strat.status === "paused") {
+                                pauseStrategy(strat.id);
+                              } else {
+                                deployStrategy(strat.id);
+                              }
+                            }}
+                          >
+                            {strat.status === "deployed" ? (
+                              <><Pause className="w-3 h-3 text-warning" /> Disable</>
+                            ) : strat.status === "paused" ? (
+                              <><Play className="w-3 h-3 text-profit" /> Enable</>
+                            ) : (
+                              <><Rocket className="w-3 h-3" /> Deploy</>
+                            )}
+                          </Button>
                         </div>
                       </div>
 
                       {/* Legs Summary */}
                       <div className="space-y-1 mb-3">
                         {strat.legs.map((l, i) => (
-                          <div key={l.id} className="flex items-center gap-2 text-[10px]">
+                          <div key={l.id || i} className="flex items-center gap-2 text-[10px]">
                             <span className={cn("font-bold", l.side === "BUY" ? "text-profit" : "text-loss")}>{l.side}</span>
                             <span className="text-foreground">{l.lots}L</span>
-                            <span className="text-muted-foreground">{l.strikeSelection} {l.optionType}</span>
+                            <span className={cn("font-medium", getStrikeColor(l.strikeSelection))}>{l.strikeSelection} {l.optionType}</span>
                             <span className="text-muted-foreground capitalize">{l.expiry}</span>
                           </div>
                         ))}
@@ -1150,17 +1195,6 @@ const Algo = () => {
                         >
                           <Settings2 className="w-3 h-3" /> Edit
                         </Button>
-                        {strat.status === "backtested" && (
-                          <Button size="sm" className="text-xs h-7 gap-1" onClick={() => deployStrategy(strat.id)}>
-                            <Rocket className="w-3 h-3" /> Deploy
-                          </Button>
-                        )}
-                        {(strat.status === "deployed" || strat.status === "paused") && (
-                          <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => pauseStrategy(strat.id)}>
-                            {strat.status === "deployed" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                            {strat.status === "deployed" ? "Pause" : "Resume"}
-                          </Button>
-                        )}
                         <Button
                           size="sm"
                           variant="ghost"

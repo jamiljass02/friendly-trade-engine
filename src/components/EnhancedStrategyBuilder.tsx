@@ -913,9 +913,9 @@ const EnhancedStrategyBuilder = () => {
                             updateLeg(leg.id, { strike: atmStrike + n * step * dir, strikeSelection: sel });
                           }
                         }}
-                        className="bg-muted text-foreground text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[90px]"
+                        className={cn("bg-muted text-[10px] px-1.5 py-1.5 rounded border border-border/50 outline-none w-[90px]", getStrikeColor(leg.strikeSelection))}
                       >
-                        {strikeOpts.map((s) => <option key={s} value={s}>{s}</option>)}
+                        {strikeOpts.map((s) => <option key={s} value={s} className={getStrikeColor(s)}>{s}</option>)}
                       </select>
                     )
                   ) : (

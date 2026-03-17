@@ -216,14 +216,41 @@ const EnhancedStrategyBuilder = () => {
     setLegs((prev) => prev.filter((l) => l.id !== id));
   }, []);
 
+  const recalcStrike = useCallback((leg: StrategyLeg, spot: number, step: number): number | undefined => {
+    if (leg.instrumentType.includes("future")) return undefined;
+    const atmStrike = Math.round(spot / step) * step;
+    const sel = leg.strikeSelection;
+    if (sel === "ATM") return atmStrike;
+    if (sel.startsWith("OTM")) {
+      const n = parseInt(sel.split(" ")[1]) || 1;
+      const dir = leg.optionType === "CE" ? 1 : -1;
+      return atmStrike + n * step * dir;
+    }
+    if (sel.startsWith("ITM")) {
+      const n = parseInt(sel.split(" ")[1]) || 1;
+      const dir = leg.optionType === "CE" ? -1 : 1;
+      return atmStrike + n * step * dir;
+    }
+    return leg.strike;
+  }, []);
+
   const updateLeg = useCallback(
     (id: string, updates: Partial<StrategyLeg>) => {
       setLegs((prev) =>
         prev.map((l) => {
           if (l.id !== id) return l;
           const updated = { ...l, ...updates };
+
+          // When optionType changes, recalculate strike for current strikeSelection
+          if (updates.optionType && updates.optionType !== l.optionType && !l.instrumentType.includes("future")) {
+            const spot = getDefaultSpotPrice(updated.underlying);
+            const inst = getInstrument(updated.underlying);
+            const step = inst?.strikeStep || 50;
+            updated.strike = recalcStrike(updated, spot, step);
+          }
+
           // Recalc LTP if strike/underlying changes
-          if (updates.underlying || updates.strike) {
+          if (updates.underlying || updates.strike || updates.optionType) {
             const spot = getDefaultSpotPrice(updated.underlying);
             if (updated.instrumentType.includes("future")) {
               updated.ltp = spot;
@@ -240,7 +267,7 @@ const EnhancedStrategyBuilder = () => {
         })
       );
     },
-    []
+    [recalcStrike]
   );
 
   const applyTemplate = useCallback(

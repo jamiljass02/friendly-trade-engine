@@ -285,6 +285,8 @@ const Algo = () => {
     recurrence: "daily",
     telegramAlert: true,
     moveToCost: true,
+    productType: "MIS",
+    executionMode: "paper",
     createdAt: new Date(),
   });
 

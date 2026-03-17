@@ -117,12 +117,22 @@ interface AlgoStrategy {
 // ── Constants ──
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
 const lotSizes: Record<string, number> = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 15 };
-const strikeOptions = [
-  ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
-  "ATM",
-  ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
-  "CUSTOM",
-];
+
+// CE: OTM20→ATM→ITM20, PE: ITM20→ATM→OTM20
+function getStrikeOptionsForType(optionType: "CE" | "PE") {
+  const otmList = Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`);
+  const itmList = Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`);
+  if (optionType === "CE") return [...otmList, "ATM", ...itmList, "CUSTOM"];
+  return [...itmList.slice().reverse(), "ATM", ...otmList.slice().reverse(), "CUSTOM"];
+}
+
+function getStrikeColor(sel: string): string {
+  if (sel.startsWith("OTM")) return "text-loss";
+  if (sel.startsWith("ITM")) return "text-profit";
+  if (sel === "ATM") return "text-primary";
+  return "text-foreground";
+}
+
 const premiumModes = [
   { value: "none", label: "No Filter" },
   { value: "between", label: "Between ₹X – ₹Y" },

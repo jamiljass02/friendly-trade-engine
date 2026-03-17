@@ -108,6 +108,8 @@ interface AlgoStrategy {
   recurrence: "once" | "daily" | "weekly" | "monthly";
   telegramAlert: boolean;
   moveToCost: boolean;
+  productType: "MIS" | "NRML";
+  executionMode: "paper" | "live";
   createdAt: Date;
   backtestResult?: BacktestSummary;
 }
@@ -115,12 +117,22 @@ interface AlgoStrategy {
 // ── Constants ──
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
 const lotSizes: Record<string, number> = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 15 };
-const strikeOptions = [
-  ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
-  "ATM",
-  ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
-  "CUSTOM",
-];
+
+// CE: OTM20→ATM→ITM20, PE: ITM20→ATM→OTM20
+function getStrikeOptionsForType(optionType: "CE" | "PE") {
+  const otmList = Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`);
+  const itmList = Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`);
+  if (optionType === "CE") return [...otmList, "ATM", ...itmList, "CUSTOM"];
+  return [...itmList.slice().reverse(), "ATM", ...otmList.slice().reverse(), "CUSTOM"];
+}
+
+function getStrikeColor(sel: string): string {
+  if (sel.startsWith("OTM")) return "text-loss";
+  if (sel.startsWith("ITM")) return "text-profit";
+  if (sel === "ATM") return "text-primary";
+  return "text-foreground";
+}
+
 const premiumModes = [
   { value: "none", label: "No Filter" },
   { value: "between", label: "Between ₹X – ₹Y" },
@@ -137,40 +149,27 @@ const indicatorOptions = [
 
 const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "backtestResult">[] = [
   {
-    name: "Short Straddle",
-    instrument: "NIFTY",
+    name: "Short Straddle", instrument: "NIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
-    exitConditions: [
-      { id: "1", type: "sl_pct", value: "30" },
-      { id: "2", type: "time", value: "15:15" },
-    ],
-    recurrence: "daily",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "sl_pct", value: "30" }, { id: "2", type: "time", value: "15:15" }],
+    recurrence: "daily", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Short Strangle",
-    instrument: "NIFTY",
+    name: "Short Strangle", instrument: "NIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
-    exitConditions: [
-      { id: "1", type: "sl_pct", value: "50" },
-      { id: "2", type: "time", value: "15:15" },
-    ],
-    recurrence: "daily",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "sl_pct", value: "50" }, { id: "2", type: "time", value: "15:15" }],
+    recurrence: "daily", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Iron Condor",
-    instrument: "BANKNIFTY",
+    name: "Iron Condor", instrument: "BANKNIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
@@ -178,62 +177,38 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
       { id: "4", segment: "OPT", side: "BUY", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
-    exitConditions: [
-      { id: "1", type: "mtm_loss", value: "5000" },
-      { id: "2", type: "mtm_profit", value: "3000" },
-      { id: "3", type: "time", value: "15:20" },
-    ],
-    recurrence: "daily",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "mtm_loss", value: "5000" }, { id: "2", type: "mtm_profit", value: "3000" }, { id: "3", type: "time", value: "15:20" }],
+    recurrence: "daily", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Calendar Spread",
-    instrument: "NIFTY",
+    name: "Calendar Spread", instrument: "NIFTY", productType: "NRML", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "next_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
-    exitConditions: [
-      { id: "1", type: "target_pct", value: "50" },
-      { id: "2", type: "sl_pct", value: "30" },
-    ],
-    recurrence: "weekly",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "target_pct", value: "50" }, { id: "2", type: "sl_pct", value: "30" }],
+    recurrence: "weekly", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Bull Put Spread",
-    instrument: "NIFTY",
+    name: "Bull Put Spread", instrument: "NIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "BUY", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "price_move", operator: ">", value: "0.3" }],
-    exitConditions: [
-      { id: "1", type: "target_pct", value: "60" },
-      { id: "2", type: "sl_pct", value: "100" },
-    ],
-    recurrence: "daily",
-    telegramAlert: false,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "target_pct", value: "60" }, { id: "2", type: "sl_pct", value: "100" }],
+    recurrence: "daily", telegramAlert: false, moveToCost: true,
   },
   {
-    name: "Expiry Day Straddle",
-    instrument: "SENSEX",
+    name: "Expiry Day Straddle", instrument: "SENSEX", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
-    exitConditions: [
-      { id: "1", type: "sl_points", value: "150" },
-      { id: "2", type: "time", value: "15:25" },
-    ],
-    recurrence: "weekly",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "sl_points", value: "150" }, { id: "2", type: "time", value: "15:25" }],
+    recurrence: "weekly", telegramAlert: true, moveToCost: true,
   },
 ];
 
@@ -277,6 +252,8 @@ const Algo = () => {
             recurrence: row.recurrence,
             telegramAlert: row.telegram_alert,
             moveToCost: row.backtest_result?.moveToCost ?? true,
+            productType: row.product_type || "MIS",
+            executionMode: row.execution_mode || "paper",
             createdAt: new Date(row.created_at),
             backtestResult: row.backtest_result || undefined,
           })));
@@ -308,6 +285,8 @@ const Algo = () => {
     recurrence: "daily",
     telegramAlert: true,
     moveToCost: true,
+    productType: "MIS",
+    executionMode: "paper",
     createdAt: new Date(),
   });
 
@@ -422,6 +401,8 @@ const Algo = () => {
         recurrence: editingStrategy.recurrence,
         telegram_alert: editingStrategy.telegramAlert,
         backtest_result: editingStrategy.backtestResult as any || null,
+        product_type: editingStrategy.productType,
+        execution_mode: editingStrategy.executionMode,
       };
 
       // Check if strategy already exists in DB
@@ -479,15 +460,26 @@ const Algo = () => {
     }, 1000);
   };
 
-  const deployStrategy = (stratId: string) => {
+  const deployStrategy = async (stratId: string) => {
+    await supabase.from('algo_strategies').update({ status: 'deployed' }).eq('id', stratId);
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, status: "deployed" as const } : s))
     );
   };
 
-  const pauseStrategy = (stratId: string) => {
+  const pauseStrategy = async (stratId: string) => {
+    const strat = strategies.find((s) => s.id === stratId);
+    const newStatus = strat?.status === "deployed" ? "paused" : "deployed";
+    await supabase.from('algo_strategies').update({ status: newStatus }).eq('id', stratId);
     setStrategies((prev) =>
-      prev.map((s) => (s.id === stratId ? { ...s, status: s.status === "deployed" ? "paused" as const : "deployed" as const } : s))
+      prev.map((s) => (s.id === stratId ? { ...s, status: newStatus as any } : s))
+    );
+  };
+
+  const toggleExecutionMode = async (stratId: string, mode: "paper" | "live") => {
+    await supabase.from('algo_strategies').update({ execution_mode: mode }).eq('id', stratId);
+    setStrategies((prev) =>
+      prev.map((s) => (s.id === stratId ? { ...s, executionMode: mode } : s))
     );
   };
 
@@ -597,6 +589,26 @@ const Algo = () => {
                           { value: "daily", label: "Daily" },
                           { value: "weekly", label: "Weekly" },
                           { value: "monthly", label: "Monthly" },
+                        ]}
+                        className="w-28"
+                      />
+                      <SelectInput
+                        label="Product"
+                        value={editingStrategy.productType}
+                        onChange={(v) => setEditingStrategy({ ...editingStrategy, productType: v as "MIS" | "NRML" })}
+                        options={[
+                          { value: "MIS", label: "MIS (Intraday)" },
+                          { value: "NRML", label: "NRML (Positional)" },
+                        ]}
+                        className="w-32"
+                      />
+                      <SelectInput
+                        label="Mode"
+                        value={editingStrategy.executionMode}
+                        onChange={(v) => setEditingStrategy({ ...editingStrategy, executionMode: v as "paper" | "live" })}
+                        options={[
+                          { value: "paper", label: "📄 Paper" },
+                          { value: "live", label: "🔴 Live" },
                         ]}
                         className="w-28"
                       />
@@ -736,9 +748,11 @@ const Algo = () => {
                                 <select
                                   value={leg.strikeSelection}
                                   onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value })}
-                                  className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[90px]"
+                                  className={cn("bg-muted text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[90px] font-medium", getStrikeColor(leg.strikeSelection))}
                                 >
-                                  {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                                  {getStrikeOptionsForType(leg.optionType).map((s) => (
+                                    <option key={s} value={s} className={getStrikeColor(s)}>{s}</option>
+                                  ))}
                                 </select>
                               )
                             ) : (
@@ -1093,21 +1107,66 @@ const Algo = () => {
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <h3 className="text-sm font-semibold text-foreground">{strat.name}</h3>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="outline" className="text-[9px]">{strat.instrument}</Badge>
                             <Badge className={cn("text-[9px]", statusColors[strat.status])}>{strat.status}</Badge>
+                            <Badge variant="outline" className="text-[9px]">{strat.productType}</Badge>
                             <span className="text-[10px] text-muted-foreground">{strat.legs.length} legs</span>
                           </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {/* Paper / Live toggle */}
+                          <div className="flex rounded-md border border-border overflow-hidden">
+                            <button
+                              onClick={() => toggleExecutionMode(strat.id, "paper")}
+                              className={cn(
+                                "text-[9px] px-2 py-1 font-medium transition-colors",
+                                strat.executionMode === "paper" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                              )}
+                            >
+                              Paper
+                            </button>
+                            <button
+                              onClick={() => toggleExecutionMode(strat.id, "live")}
+                              className={cn(
+                                "text-[9px] px-2 py-1 font-medium transition-colors",
+                                strat.executionMode === "live" ? "bg-destructive/10 text-loss" : "text-muted-foreground hover:text-foreground"
+                              )}
+                            >
+                              Live
+                            </button>
+                          </div>
+                          {/* Enable / Disable */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={cn("h-7 text-xs gap-1", strat.status === "deployed" ? "border-success/30" : "")}
+                            onClick={() => {
+                              if (strat.status === "deployed" || strat.status === "paused") {
+                                pauseStrategy(strat.id);
+                              } else {
+                                deployStrategy(strat.id);
+                              }
+                            }}
+                          >
+                            {strat.status === "deployed" ? (
+                              <><Pause className="w-3 h-3 text-warning" /> Disable</>
+                            ) : strat.status === "paused" ? (
+                              <><Play className="w-3 h-3 text-profit" /> Enable</>
+                            ) : (
+                              <><Rocket className="w-3 h-3" /> Deploy</>
+                            )}
+                          </Button>
                         </div>
                       </div>
 
                       {/* Legs Summary */}
                       <div className="space-y-1 mb-3">
                         {strat.legs.map((l, i) => (
-                          <div key={l.id} className="flex items-center gap-2 text-[10px]">
+                          <div key={l.id || i} className="flex items-center gap-2 text-[10px]">
                             <span className={cn("font-bold", l.side === "BUY" ? "text-profit" : "text-loss")}>{l.side}</span>
                             <span className="text-foreground">{l.lots}L</span>
-                            <span className="text-muted-foreground">{l.strikeSelection} {l.optionType}</span>
+                            <span className={cn("font-medium", getStrikeColor(l.strikeSelection))}>{l.strikeSelection} {l.optionType}</span>
                             <span className="text-muted-foreground capitalize">{l.expiry}</span>
                           </div>
                         ))}
@@ -1136,17 +1195,6 @@ const Algo = () => {
                         >
                           <Settings2 className="w-3 h-3" /> Edit
                         </Button>
-                        {strat.status === "backtested" && (
-                          <Button size="sm" className="text-xs h-7 gap-1" onClick={() => deployStrategy(strat.id)}>
-                            <Rocket className="w-3 h-3" /> Deploy
-                          </Button>
-                        )}
-                        {(strat.status === "deployed" || strat.status === "paused") && (
-                          <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => pauseStrategy(strat.id)}>
-                            {strat.status === "deployed" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                            {strat.status === "deployed" ? "Pause" : "Resume"}
-                          </Button>
-                        )}
                         <Button
                           size="sm"
                           variant="ghost"
@@ -1230,6 +1278,10 @@ const Algo = () => {
                               <div className="flex items-center gap-2">
                                 <h3 className="text-sm font-semibold text-foreground">{strat.name}</h3>
                                 <Badge variant="outline" className="text-[9px]">{strat.instrument}</Badge>
+                                <Badge variant="outline" className="text-[9px]">{strat.productType}</Badge>
+                                <Badge variant="outline" className={cn("text-[9px]", strat.executionMode === "live" ? "border-destructive/30 text-loss" : "border-primary/30 text-primary")}>
+                                  {strat.executionMode === "live" ? "🔴 LIVE" : "📄 PAPER"}
+                                </Badge>
                                 <div className={cn("w-2 h-2 rounded-full", strat.status === "deployed" ? "bg-profit animate-pulse" : "bg-warning")} />
                               </div>
                               <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
@@ -1248,6 +1300,16 @@ const Algo = () => {
                                 {strat.backtestResult.totalPnl >= 0 ? "+" : ""}₹{strat.backtestResult.totalPnl.toLocaleString("en-IN")}
                               </span>
                             )}
+                            <div className="flex rounded-md border border-border overflow-hidden mr-1">
+                              <button
+                                onClick={() => toggleExecutionMode(strat.id, "paper")}
+                                className={cn("text-[9px] px-2 py-1 font-medium transition-colors", strat.executionMode === "paper" ? "bg-primary/10 text-primary" : "text-muted-foreground")}
+                              >Paper</button>
+                              <button
+                                onClick={() => toggleExecutionMode(strat.id, "live")}
+                                className={cn("text-[9px] px-2 py-1 font-medium transition-colors", strat.executionMode === "live" ? "bg-destructive/10 text-loss" : "text-muted-foreground")}
+                              >Live</button>
+                            </div>
                             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => pauseStrategy(strat.id)}>
                               {strat.status === "deployed" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                               {strat.status === "deployed" ? "Pause" : "Resume"}

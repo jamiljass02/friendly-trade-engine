@@ -149,40 +149,27 @@ const indicatorOptions = [
 
 const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "backtestResult">[] = [
   {
-    name: "Short Straddle",
-    instrument: "NIFTY",
+    name: "Short Straddle", instrument: "NIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
-    exitConditions: [
-      { id: "1", type: "sl_pct", value: "30" },
-      { id: "2", type: "time", value: "15:15" },
-    ],
-    recurrence: "daily",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "sl_pct", value: "30" }, { id: "2", type: "time", value: "15:15" }],
+    recurrence: "daily", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Short Strangle",
-    instrument: "NIFTY",
+    name: "Short Strangle", instrument: "NIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 2", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
-    exitConditions: [
-      { id: "1", type: "sl_pct", value: "50" },
-      { id: "2", type: "time", value: "15:15" },
-    ],
-    recurrence: "daily",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "sl_pct", value: "50" }, { id: "2", type: "time", value: "15:15" }],
+    recurrence: "daily", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Iron Condor",
-    instrument: "BANKNIFTY",
+    name: "Iron Condor", instrument: "BANKNIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
@@ -190,62 +177,38 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
       { id: "4", segment: "OPT", side: "BUY", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
-    exitConditions: [
-      { id: "1", type: "mtm_loss", value: "5000" },
-      { id: "2", type: "mtm_profit", value: "3000" },
-      { id: "3", type: "time", value: "15:20" },
-    ],
-    recurrence: "daily",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "mtm_loss", value: "5000" }, { id: "2", type: "mtm_profit", value: "3000" }, { id: "3", type: "time", value: "15:20" }],
+    recurrence: "daily", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Calendar Spread",
-    instrument: "NIFTY",
+    name: "Calendar Spread", instrument: "NIFTY", productType: "NRML", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "BUY", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "next_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:30" }],
-    exitConditions: [
-      { id: "1", type: "target_pct", value: "50" },
-      { id: "2", type: "sl_pct", value: "30" },
-    ],
-    recurrence: "weekly",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "target_pct", value: "50" }, { id: "2", type: "sl_pct", value: "30" }],
+    recurrence: "weekly", telegramAlert: true, moveToCost: true,
   },
   {
-    name: "Bull Put Spread",
-    instrument: "NIFTY",
+    name: "Bull Put Spread", instrument: "NIFTY", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 1", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "BUY", optionType: "PE", strikeMode: "spot_based", strikeSelection: "OTM 3", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "price_move", operator: ">", value: "0.3" }],
-    exitConditions: [
-      { id: "1", type: "target_pct", value: "60" },
-      { id: "2", type: "sl_pct", value: "100" },
-    ],
-    recurrence: "daily",
-    telegramAlert: false,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "target_pct", value: "60" }, { id: "2", type: "sl_pct", value: "100" }],
+    recurrence: "daily", telegramAlert: false, moveToCost: true,
   },
   {
-    name: "Expiry Day Straddle",
-    instrument: "SENSEX",
+    name: "Expiry Day Straddle", instrument: "SENSEX", productType: "MIS", executionMode: "paper",
     legs: [
       { id: "1", segment: "OPT", side: "SELL", optionType: "CE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
       { id: "2", segment: "OPT", side: "SELL", optionType: "PE", strikeMode: "spot_based", strikeSelection: "ATM", lots: 1, expiry: "current_week" },
     ],
     entryConditions: [{ id: "1", type: "time", operator: ">=", value: "09:20" }],
-    exitConditions: [
-      { id: "1", type: "sl_points", value: "150" },
-      { id: "2", type: "time", value: "15:25" },
-    ],
-    recurrence: "weekly",
-    telegramAlert: true,
-    moveToCost: true,
+    exitConditions: [{ id: "1", type: "sl_points", value: "150" }, { id: "2", type: "time", value: "15:25" }],
+    recurrence: "weekly", telegramAlert: true, moveToCost: true,
   },
 ];
 

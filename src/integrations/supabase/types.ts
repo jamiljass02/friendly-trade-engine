@@ -19,11 +19,13 @@ export type Database = {
           backtest_result: Json | null
           created_at: string
           entry_conditions: Json
+          execution_mode: string
           exit_conditions: Json
           id: string
           instrument: string
           legs: Json
           name: string
+          product_type: string
           recurrence: string
           status: string
           telegram_alert: boolean
@@ -34,11 +36,13 @@ export type Database = {
           backtest_result?: Json | null
           created_at?: string
           entry_conditions?: Json
+          execution_mode?: string
           exit_conditions?: Json
           id?: string
           instrument?: string
           legs?: Json
           name?: string
+          product_type?: string
           recurrence?: string
           status?: string
           telegram_alert?: boolean
@@ -49,11 +53,13 @@ export type Database = {
           backtest_result?: Json | null
           created_at?: string
           entry_conditions?: Json
+          execution_mode?: string
           exit_conditions?: Json
           id?: string
           instrument?: string
           legs?: Json
           name?: string
+          product_type?: string
           recurrence?: string
           status?: string
           telegram_alert?: boolean

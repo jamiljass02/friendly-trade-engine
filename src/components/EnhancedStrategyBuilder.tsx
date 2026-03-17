@@ -794,15 +794,30 @@ const EnhancedStrategyBuilder = () => {
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
               const expiries = getUpcomingExpiries(isWeekly, 4, leg.underlying);
 
-              // Keep ATM centered between nearby OTM/ITM levels (1-20)
-              const primaryStrikeOpts = [
-                ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
-                "ATM",
-                ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
-              ];
+              // For CE: OTM (higher strikes) first, then ATM, then ITM
+              // For PE: ITM (higher strikes) first, then ATM, then OTM  
+              const isPE = leg.optionType === "PE";
+              const primaryStrikeOpts = isPE
+                ? [
+                    ...Array.from({ length: 20 }, (_, i) => `ITM ${20 - i}`),
+                    "ATM",
+                    ...Array.from({ length: 20 }, (_, i) => `OTM ${i + 1}`),
+                  ]
+                : [
+                    ...Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`),
+                    "ATM",
+                    ...Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`),
+                  ];
               const strikeOpts = primaryStrikeOpts.includes(leg.strikeSelection)
                 ? primaryStrikeOpts
                 : [...primaryStrikeOpts, leg.strikeSelection];
+
+              const getStrikeColor = (s: string) => {
+                if (s === "ATM") return "text-blue-400";
+                if (s.startsWith("OTM")) return "text-loss";
+                if (s.startsWith("ITM")) return "text-profit";
+                return "text-foreground";
+              };
 
               return (
                 <div

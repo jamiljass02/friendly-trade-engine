@@ -401,6 +401,8 @@ const Algo = () => {
         recurrence: editingStrategy.recurrence,
         telegram_alert: editingStrategy.telegramAlert,
         backtest_result: editingStrategy.backtestResult as any || null,
+        product_type: editingStrategy.productType,
+        execution_mode: editingStrategy.executionMode,
       };
 
       // Check if strategy already exists in DB

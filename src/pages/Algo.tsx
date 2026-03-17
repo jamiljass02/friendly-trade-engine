@@ -1278,6 +1278,10 @@ const Algo = () => {
                               <div className="flex items-center gap-2">
                                 <h3 className="text-sm font-semibold text-foreground">{strat.name}</h3>
                                 <Badge variant="outline" className="text-[9px]">{strat.instrument}</Badge>
+                                <Badge variant="outline" className="text-[9px]">{strat.productType}</Badge>
+                                <Badge variant="outline" className={cn("text-[9px]", strat.executionMode === "live" ? "border-destructive/30 text-loss" : "border-primary/30 text-primary")}>
+                                  {strat.executionMode === "live" ? "🔴 LIVE" : "📄 PAPER"}
+                                </Badge>
                                 <div className={cn("w-2 h-2 rounded-full", strat.status === "deployed" ? "bg-profit animate-pulse" : "bg-warning")} />
                               </div>
                               <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
@@ -1296,6 +1300,16 @@ const Algo = () => {
                                 {strat.backtestResult.totalPnl >= 0 ? "+" : ""}₹{strat.backtestResult.totalPnl.toLocaleString("en-IN")}
                               </span>
                             )}
+                            <div className="flex rounded-md border border-border overflow-hidden mr-1">
+                              <button
+                                onClick={() => toggleExecutionMode(strat.id, "paper")}
+                                className={cn("text-[9px] px-2 py-1 font-medium transition-colors", strat.executionMode === "paper" ? "bg-primary/10 text-primary" : "text-muted-foreground")}
+                              >Paper</button>
+                              <button
+                                onClick={() => toggleExecutionMode(strat.id, "live")}
+                                className={cn("text-[9px] px-2 py-1 font-medium transition-colors", strat.executionMode === "live" ? "bg-destructive/10 text-loss" : "text-muted-foreground")}
+                              >Live</button>
+                            </div>
                             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => pauseStrategy(strat.id)}>
                               {strat.status === "deployed" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                               {strat.status === "deployed" ? "Pause" : "Resume"}

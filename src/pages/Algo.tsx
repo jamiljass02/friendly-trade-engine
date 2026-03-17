@@ -252,6 +252,8 @@ const Algo = () => {
             recurrence: row.recurrence,
             telegramAlert: row.telegram_alert,
             moveToCost: row.backtest_result?.moveToCost ?? true,
+            productType: row.product_type || "MIS",
+            executionMode: row.execution_mode || "paper",
             createdAt: new Date(row.created_at),
             backtestResult: row.backtest_result || undefined,
           })));

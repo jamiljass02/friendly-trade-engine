@@ -296,7 +296,7 @@ const EnhancedStrategyBuilder = () => {
       savedAt: new Date().toISOString(),
     };
 
-    const next = [payload, ...savedStrategies.filter((item) => item.name !== payload.name)].slice(0, 12);
+    const next = [payload, ...savedStrategies.filter((item) => item.id !== payload.id && item.name !== payload.name)].slice(0, 30);
     localStorage.setItem("strategy-builder-saves", JSON.stringify(next));
     setSavedStrategies(next);
     toast({ title: "Strategy saved", description: `${payload.name} is ready to load and execute anytime.` });

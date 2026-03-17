@@ -581,6 +581,26 @@ const Algo = () => {
                         ]}
                         className="w-28"
                       />
+                      <SelectInput
+                        label="Product"
+                        value={editingStrategy.productType}
+                        onChange={(v) => setEditingStrategy({ ...editingStrategy, productType: v as "MIS" | "NRML" })}
+                        options={[
+                          { value: "MIS", label: "MIS (Intraday)" },
+                          { value: "NRML", label: "NRML (Positional)" },
+                        ]}
+                        className="w-32"
+                      />
+                      <SelectInput
+                        label="Mode"
+                        value={editingStrategy.executionMode}
+                        onChange={(v) => setEditingStrategy({ ...editingStrategy, executionMode: v as "paper" | "live" })}
+                        options={[
+                          { value: "paper", label: "📄 Paper" },
+                          { value: "live", label: "🔴 Live" },
+                        ]}
+                        className="w-28"
+                      />
                       <div className="flex items-end gap-1.5 pt-3">
                         <button
                           onClick={() => setEditingStrategy({ ...editingStrategy, telegramAlert: !editingStrategy.telegramAlert })}

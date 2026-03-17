@@ -460,15 +460,26 @@ const Algo = () => {
     }, 1000);
   };
 
-  const deployStrategy = (stratId: string) => {
+  const deployStrategy = async (stratId: string) => {
+    await supabase.from('algo_strategies').update({ status: 'deployed' }).eq('id', stratId);
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, status: "deployed" as const } : s))
     );
   };
 
-  const pauseStrategy = (stratId: string) => {
+  const pauseStrategy = async (stratId: string) => {
+    const strat = strategies.find((s) => s.id === stratId);
+    const newStatus = strat?.status === "deployed" ? "paused" : "deployed";
+    await supabase.from('algo_strategies').update({ status: newStatus }).eq('id', stratId);
     setStrategies((prev) =>
-      prev.map((s) => (s.id === stratId ? { ...s, status: s.status === "deployed" ? "paused" as const : "deployed" as const } : s))
+      prev.map((s) => (s.id === stratId ? { ...s, status: newStatus as any } : s))
+    );
+  };
+
+  const toggleExecutionMode = async (stratId: string, mode: "paper" | "live") => {
+    await supabase.from('algo_strategies').update({ execution_mode: mode }).eq('id', stratId);
+    setStrategies((prev) =>
+      prev.map((s) => (s.id === stratId ? { ...s, executionMode: mode } : s))
     );
   };
 

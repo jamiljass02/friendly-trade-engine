@@ -715,9 +715,11 @@ const Algo = () => {
                                 <select
                                   value={leg.strikeSelection}
                                   onChange={(e) => updateLeg(leg.id, { strikeSelection: e.target.value })}
-                                  className="bg-muted text-foreground text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[90px]"
+                                  className={cn("bg-muted text-[11px] px-1.5 py-1.5 rounded border border-border/50 w-[90px] font-medium", getStrikeColor(leg.strikeSelection))}
                                 >
-                                  {strikeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                                  {getStrikeOptionsForType(leg.optionType).map((s) => (
+                                    <option key={s} value={s} className={getStrikeColor(s)}>{s}</option>
+                                  ))}
                                 </select>
                               )
                             ) : (

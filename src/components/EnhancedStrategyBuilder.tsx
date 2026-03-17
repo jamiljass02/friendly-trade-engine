@@ -114,6 +114,7 @@ const EnhancedStrategyBuilder = () => {
   const { toast } = useToast();
   const [legs, setLegs] = useState<StrategyLeg[]>([]);
   const [strategyName, setStrategyName] = useState("Custom Strategy");
+  const [globalProduct, setGlobalProduct] = useState<"MIS" | "NRML">("MIS");
   const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>("all");
   const [stockSearch, setStockSearch] = useState("");
   const [showStockSearch, setShowStockSearch] = useState(false);

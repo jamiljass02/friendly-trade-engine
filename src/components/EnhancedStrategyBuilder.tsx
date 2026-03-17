@@ -559,6 +559,27 @@ const EnhancedStrategyBuilder = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* MIS / NRML toggle */}
+            <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+              {(["MIS", "NRML"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => {
+                    setGlobalProduct(p);
+                    // Update all existing legs
+                    setLegs((prev) => prev.map((l) => ({ ...l, productType: p })));
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors",
+                    globalProduct === p
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
             {savedStrategies.length > 0 && (
               <select
                 value=""

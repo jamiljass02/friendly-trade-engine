@@ -205,10 +205,11 @@ const EnhancedStrategyBuilder = () => {
         entryType: "MKT",
         validity: "DAY",
         ltp: Math.round(mockLTP * 100) / 100,
+        productType: globalProduct,
       };
       setLegs((prev) => [...prev, newLeg]);
     },
-    [legs]
+    [legs, globalProduct]
   );
 
   const removeLeg = useCallback((id: string) => {

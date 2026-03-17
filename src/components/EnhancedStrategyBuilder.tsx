@@ -511,7 +511,7 @@ const EnhancedStrategyBuilder = () => {
           price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
           transaction_type: leg.action === "BUY" ? "B" : "S",
           order_type: leg.entryType,
-          product: "M",
+          product: leg.productType === "NRML" ? "M" : "I",
           exchange,
         });
       }

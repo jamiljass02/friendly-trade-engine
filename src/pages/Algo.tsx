@@ -108,6 +108,8 @@ interface AlgoStrategy {
   recurrence: "once" | "daily" | "weekly" | "monthly";
   telegramAlert: boolean;
   moveToCost: boolean;
+  productType: "MIS" | "NRML";
+  executionMode: "paper" | "live";
   createdAt: Date;
   backtestResult?: BacktestSummary;
 }

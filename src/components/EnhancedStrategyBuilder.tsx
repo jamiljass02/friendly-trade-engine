@@ -48,6 +48,7 @@ export interface StrategyLeg {
   stopLossPct?: number;
   takeProfitPct?: number;
   premiumTarget?: number;
+  productType: "MIS" | "NRML";
 }
 
 type InstrumentFilter = "all" | "index" | "stock";

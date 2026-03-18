@@ -1,6 +1,7 @@
 export type StrategyRuntimeSource = "builder" | "algo";
 export type StrategyRuntimeMode = "paper" | "live";
 export type StrategyRuntimeStatus = "running" | "paused";
+export type StrategyRuntimeProduct = "MIS" | "NRML";
 
 export interface StrategyRuntimeLeg {
   symbol: string;
@@ -21,6 +22,7 @@ export interface RunningStrategyRuntime {
   source: StrategyRuntimeSource;
   mode: StrategyRuntimeMode;
   status: StrategyRuntimeStatus;
+  productType?: StrategyRuntimeProduct;
   createdAt: string;
   legs: StrategyRuntimeLeg[];
 }

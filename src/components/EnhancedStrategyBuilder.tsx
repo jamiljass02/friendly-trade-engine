@@ -420,103 +420,119 @@ const EnhancedStrategyBuilder = () => {
     return `Custom (${legs.length} legs)`;
   }, [legs]);
 
-  const handleExecute = useCallback(async () => {
-    if (!isConnected || legs.length === 0) return;
+  const handleExecute = useCallback(async (mode: "paper" | "live") => {
+    if (legs.length === 0) return;
+    if (mode === "live" && !isConnected) return;
+
     setExecuting(true);
     try {
+      const runtimeLegs: Array<{
+        symbol: string;
+        instrument: string;
+        type: "CE" | "PE" | "FUT" | "EQ";
+        side: "BUY" | "SELL";
+        quantity: number;
+        price: number;
+        strike?: number;
+        expiry?: string;
+      }> = [];
+
       for (const leg of legs) {
         const inst = getInstrument(leg.underlying);
         const lotSize = inst?.lotSize || 25;
         const exchange = inst?.exchange || "NFO";
-        let tsym = leg.underlying;
+        const expiryDate = resolveBuilderExpiryDate(leg.expiry, leg.underlying);
 
         if (leg.instrumentType.includes("option")) {
           if (!leg.strike || !leg.optionType) {
             throw new Error(`Select a valid strike for ${leg.underlying} before executing.`);
           }
 
-          const strike = Number(leg.strike);
-          const optionType = leg.optionType;
+          if (mode === "paper") {
+            const paperSymbol = buildPaperOptionSymbol({
+              instrument: leg.underlying,
+              expiryDate,
+              strike: leg.strike,
+              optionType: leg.optionType,
+            });
+            const price = leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp;
+            const quantity = leg.lots * lotSize;
 
-          try {
-            const chainResult = await getOptionChain(leg.underlying, strike, 12, exchange);
-            const values = Array.isArray((chainResult as any)?.values)
-              ? (chainResult as any).values
-              : Array.isArray(chainResult)
-                ? chainResult
-                : [];
-
-            const exactFromChain = values.find((row: any) => {
-              const rowStrike = Number(row.strprc ?? row.strike);
-              const rowType = String(row.optt ?? "").toUpperCase();
-              return rowStrike === strike && rowType === optionType && row.tsym;
+            paper.placeOrder({
+              symbol: paperSymbol,
+              instrument: leg.underlying,
+              type: leg.optionType,
+              side: leg.action,
+              quantity,
+              price,
+              strike: leg.strike,
+              expiry: expiryDate?.toISOString(),
             });
 
-            if (exactFromChain?.tsym) {
-              tsym = String(exactFromChain.tsym);
-            }
-          } catch {
-            // fallback to search
+            runtimeLegs.push({
+              symbol: paperSymbol,
+              instrument: leg.underlying,
+              type: leg.optionType,
+              side: leg.action,
+              quantity,
+              price,
+              strike: leg.strike,
+              expiry: expiryDate?.toISOString(),
+            });
+            continue;
           }
 
-          if (tsym === leg.underlying) {
-            const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-            const expiries = getUpcomingExpiries(isWeekly, 8, leg.underlying);
-            const expiryObj = expiries.find((e) => e.label === leg.expiry) || expiries[0];
-            const expiryCode = formatExpiryForSymbol(expiryObj?.date || new Date());
-            const constructed = `${leg.underlying}${expiryCode}${optionType === "CE" ? "C" : "P"}${strike}`;
-            const searchCandidates = [constructed, `${leg.underlying} ${strike} ${optionType}`];
+          const tsym = await resolveOptionTradingSymbol({
+            instrument: leg.underlying,
+            optionType: leg.optionType,
+            strike: Number(leg.strike),
+            expiryDate,
+            exchange,
+            getOptionChain,
+            searchScrip,
+          });
 
-            for (const query of searchCandidates) {
-              try {
-                const searchResult = await searchScrip(query, exchange);
-                const values = Array.isArray(searchResult?.values)
-                  ? searchResult.values
-                  : Array.isArray(searchResult)
-                    ? searchResult
-                    : [];
-
-                const exact = values.find((row: any) => {
-                  const rowStrike = Number(row.strprc ?? row.strike);
-                  const rowType = String(row.optt ?? "").toUpperCase();
-                  const rowTsym = String(row.tsym ?? "");
-                  const strikeMatch = Number.isFinite(rowStrike)
-                    ? rowStrike === strike
-                    : rowTsym.includes(String(strike));
-                  const typeMatch = rowType
-                    ? rowType === optionType
-                    : rowTsym.includes(optionType === "CE" ? "C" : "P");
-                  return strikeMatch && typeMatch;
-                });
-
-                if (exact?.tsym) {
-                  tsym = String(exact.tsym);
-                  break;
-                }
-              } catch {
-                // continue to next fallback
-              }
-            }
+          if (!tsym) {
+            throw new Error(`Unable to resolve trading symbol for ${leg.underlying} ${leg.optionType} ${leg.strike}.`);
           }
 
-          if (tsym === leg.underlying) {
-            throw new Error(`Unable to resolve trading symbol for ${leg.underlying} ${optionType} ${strike}.`);
-          }
+          await placeOrder({
+            tradingsymbol: tsym,
+            quantity: leg.lots * lotSize,
+            price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
+            transaction_type: leg.action === "BUY" ? "B" : "S",
+            order_type: leg.entryType,
+            product: leg.productType === "NRML" ? "M" : "I",
+            exchange,
+          });
+
+          runtimeLegs.push({
+            symbol: tsym,
+            instrument: leg.underlying,
+            type: leg.optionType,
+            side: leg.action,
+            quantity: leg.lots * lotSize,
+            price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp,
+            strike: leg.strike,
+            expiry: expiryDate?.toISOString(),
+          });
         }
-
-        await placeOrder({
-          tradingsymbol: tsym,
-          quantity: leg.lots * lotSize,
-          price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
-          transaction_type: leg.action === "BUY" ? "B" : "S",
-          order_type: leg.entryType,
-          product: leg.productType === "NRML" ? "M" : "I",
-          exchange,
-        });
       }
 
+      upsertRunningStrategy({
+        id: `builder-${crypto.randomUUID()}`,
+        name: strategyName.trim() || detectedStrategy,
+        instrument: primaryInstrument,
+        source: "builder",
+        mode,
+        status: "running",
+        productType: globalProduct,
+        createdAt: new Date().toISOString(),
+        legs: runtimeLegs,
+      });
+
       toast({
-        title: "Strategy Executed",
+        title: mode === "paper" ? "Paper strategy executed" : "Live strategy executed",
         description: `${detectedStrategy} placed with ${legs.length} legs`,
       });
       setLegs([]);
@@ -529,7 +545,7 @@ const EnhancedStrategyBuilder = () => {
     } finally {
       setExecuting(false);
     }
-  }, [isConnected, legs, placeOrder, searchScrip, getOptionChain, toast, detectedStrategy]);
+  }, [legs, isConnected, paper, placeOrder, getOptionChain, searchScrip, toast, strategyName, detectedStrategy, primaryInstrument, globalProduct]);
 
   return (
     <div className="space-y-6">

@@ -459,6 +459,7 @@ const Algo = () => {
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, status: "deployed" as const } : s))
     );
+    updateRunningStrategyStatusByStrategyId(stratId, "running");
   };
 
   const pauseStrategy = async (stratId: string) => {
@@ -468,6 +469,7 @@ const Algo = () => {
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, status: newStatus as any } : s))
     );
+    updateRunningStrategyStatusByStrategyId(stratId, newStatus === "deployed" ? "running" : "paused");
   };
 
   const toggleExecutionMode = async (stratId: string, mode: "paper" | "live") => {
@@ -475,6 +477,9 @@ const Algo = () => {
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, executionMode: mode } : s))
     );
+    if (mode === "live") {
+      removeRunningStrategyByStrategyId(stratId);
+    }
   };
 
   // ── Shared Components ──

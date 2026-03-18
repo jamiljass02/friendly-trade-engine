@@ -224,20 +224,13 @@ const EnhancedStrategyBuilder = () => {
 
   const recalcStrike = useCallback((leg: StrategyLeg, spot: number, step: number): number | undefined => {
     if (leg.instrumentType.includes("future")) return undefined;
-    const atmStrike = Math.round(spot / step) * step;
-    const sel = leg.strikeSelection;
-    if (sel === "ATM") return atmStrike;
-    if (sel.startsWith("OTM")) {
-      const n = parseInt(sel.split(" ")[1]) || 1;
-      const dir = leg.optionType === "CE" ? 1 : -1;
-      return atmStrike + n * step * dir;
-    }
-    if (sel.startsWith("ITM")) {
-      const n = parseInt(sel.split(" ")[1]) || 1;
-      const dir = leg.optionType === "CE" ? -1 : 1;
-      return atmStrike + n * step * dir;
-    }
-    return leg.strike;
+    return resolveStrikeFromSelection({
+      selection: leg.strikeSelection,
+      optionType: leg.optionType || "CE",
+      spot,
+      step,
+      customStrike: leg.strike,
+    });
   }, []);
 
   const updateLeg = useCallback(

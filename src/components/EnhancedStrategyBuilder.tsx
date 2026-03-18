@@ -23,10 +23,14 @@ import {
   getDefaultSpotPrice,
   type Instrument,
 } from "@/lib/instruments";
-import { getUpcomingExpiries, formatExpiryForSymbol, type ExpiryDate } from "@/lib/expiry-utils";
+import { getUpcomingExpiries, type ExpiryDate } from "@/lib/expiry-utils";
+import { resolveStrikeFromSelection } from "@/lib/option-strikes";
+import { buildPaperOptionSymbol, resolveBuilderExpiryDate, resolveOptionTradingSymbol } from "@/lib/strategy-order-utils";
+import { upsertRunningStrategy } from "@/lib/strategy-runtime";
 import PayoffChart from "./PayoffChart";
 import StrategyTemplates from "./StrategyTemplates";
 import { useBroker } from "@/hooks/useBroker";
+import { usePaperTrading } from "@/hooks/usePaperTrading";
 import { useToast } from "@/hooks/use-toast";
 
 export interface StrategyLeg {

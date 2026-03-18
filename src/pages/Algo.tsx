@@ -49,6 +49,11 @@ import { useBroker } from "@/hooks/useBroker";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { getUpcomingExpiries, getDaysToExpiry } from "@/lib/expiry-utils";
+import { getStrikeOptionsForType, getStrikeColorClass } from "@/lib/option-strikes";
+import {
+  removeRunningStrategyByStrategyId,
+  updateRunningStrategyStatusByStrategyId,
+} from "@/lib/strategy-runtime";
 import {
   LineChart,
   Line,

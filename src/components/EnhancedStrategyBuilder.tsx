@@ -1126,24 +1126,39 @@ const EnhancedStrategyBuilder = () => {
 
         {/* Execute */}
         {legs.length > 0 && (
-          <div className="px-5 py-4 border-t border-border/50">
-            {!isConnected ? (
+          <div className="px-5 py-4 border-t border-border/50 space-y-3">
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+              {(["paper", "live"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setExecutionMode(mode)}
+                  className={cn(
+                    "flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-colors",
+                    executionMode === mode
+                      ? mode === "paper"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-destructive text-destructive-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {mode === "paper" ? "Execute Paper" : "Execute Live"}
+                </button>
+              ))}
+            </div>
+
+            {executionMode === "live" && !isConnected ? (
               <div className="flex items-center gap-2 text-xs text-warning">
                 <AlertTriangle className="w-4 h-4" />
-                Connect broker to execute
+                Connect broker to execute live orders
               </div>
             ) : (
               <button
-                onClick={handleExecute}
+                onClick={() => handleExecute(executionMode)}
                 disabled={executing}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors glow-primary disabled:opacity-50"
               >
-                {executing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4" />
-                )}
-                {executing ? "Executing..." : `Execute ${detectedStrategy}`}
+                {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                {executing ? "Executing..." : executionMode === "paper" ? `Run ${detectedStrategy} in Paper` : `Execute ${detectedStrategy} Live`}
               </button>
             )}
           </div>

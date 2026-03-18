@@ -49,6 +49,11 @@ import { useBroker } from "@/hooks/useBroker";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { getUpcomingExpiries, getDaysToExpiry } from "@/lib/expiry-utils";
+import { getStrikeOptionsForType, getStrikeColorClass } from "@/lib/option-strikes";
+import {
+  removeRunningStrategyByStrategyId,
+  updateRunningStrategyStatusByStrategyId,
+} from "@/lib/strategy-runtime";
 import {
   LineChart,
   Line,
@@ -118,19 +123,8 @@ interface AlgoStrategy {
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
 const lotSizes: Record<string, number> = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 15 };
 
-// CE: OTM20→ATM→ITM20, PE: ITM20→ATM→OTM20
-function getStrikeOptionsForType(optionType: "CE" | "PE") {
-  const otmList = Array.from({ length: 20 }, (_, i) => `OTM ${20 - i}`);
-  const itmList = Array.from({ length: 20 }, (_, i) => `ITM ${i + 1}`);
-  if (optionType === "CE") return [...otmList, "ATM", ...itmList, "CUSTOM"];
-  return [...itmList.slice().reverse(), "ATM", ...otmList.slice().reverse(), "CUSTOM"];
-}
-
 function getStrikeColor(sel: string): string {
-  if (sel.startsWith("OTM")) return "text-loss";
-  if (sel.startsWith("ITM")) return "text-profit";
-  if (sel === "ATM") return "text-primary";
-  return "text-foreground";
+  return getStrikeColorClass(sel);
 }
 
 const premiumModes = [
@@ -465,6 +459,7 @@ const Algo = () => {
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, status: "deployed" as const } : s))
     );
+    updateRunningStrategyStatusByStrategyId(stratId, "running");
   };
 
   const pauseStrategy = async (stratId: string) => {
@@ -474,6 +469,7 @@ const Algo = () => {
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, status: newStatus as any } : s))
     );
+    updateRunningStrategyStatusByStrategyId(stratId, newStatus === "deployed" ? "running" : "paused");
   };
 
   const toggleExecutionMode = async (stratId: string, mode: "paper" | "live") => {
@@ -481,6 +477,9 @@ const Algo = () => {
     setStrategies((prev) =>
       prev.map((s) => (s.id === stratId ? { ...s, executionMode: mode } : s))
     );
+    if (mode === "live") {
+      removeRunningStrategyByStrategyId(stratId);
+    }
   };
 
   // ── Shared Components ──

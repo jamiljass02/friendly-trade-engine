@@ -23,10 +23,14 @@ import {
   getDefaultSpotPrice,
   type Instrument,
 } from "@/lib/instruments";
-import { getUpcomingExpiries, formatExpiryForSymbol, type ExpiryDate } from "@/lib/expiry-utils";
+import { getUpcomingExpiries, type ExpiryDate } from "@/lib/expiry-utils";
+import { resolveStrikeFromSelection } from "@/lib/option-strikes";
+import { buildPaperOptionSymbol, resolveBuilderExpiryDate, resolveOptionTradingSymbol } from "@/lib/strategy-order-utils";
+import { upsertRunningStrategy } from "@/lib/strategy-runtime";
 import PayoffChart from "./PayoffChart";
 import StrategyTemplates from "./StrategyTemplates";
 import { useBroker } from "@/hooks/useBroker";
+import { usePaperTrading } from "@/hooks/usePaperTrading";
 import { useToast } from "@/hooks/use-toast";
 
 export interface StrategyLeg {
@@ -111,10 +115,12 @@ function calcGreeks(
 
 const EnhancedStrategyBuilder = () => {
   const { isConnected, placeOrder, searchScrip, getOptionChain } = useBroker();
+  const paper = usePaperTrading();
   const { toast } = useToast();
   const [legs, setLegs] = useState<StrategyLeg[]>([]);
   const [strategyName, setStrategyName] = useState("Custom Strategy");
   const [globalProduct, setGlobalProduct] = useState<"MIS" | "NRML">("MIS");
+  const [executionMode, setExecutionMode] = useState<"paper" | "live">("paper");
   const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>("all");
   const [stockSearch, setStockSearch] = useState("");
   const [showStockSearch, setShowStockSearch] = useState(false);
@@ -218,20 +224,13 @@ const EnhancedStrategyBuilder = () => {
 
   const recalcStrike = useCallback((leg: StrategyLeg, spot: number, step: number): number | undefined => {
     if (leg.instrumentType.includes("future")) return undefined;
-    const atmStrike = Math.round(spot / step) * step;
-    const sel = leg.strikeSelection;
-    if (sel === "ATM") return atmStrike;
-    if (sel.startsWith("OTM")) {
-      const n = parseInt(sel.split(" ")[1]) || 1;
-      const dir = leg.optionType === "CE" ? 1 : -1;
-      return atmStrike + n * step * dir;
-    }
-    if (sel.startsWith("ITM")) {
-      const n = parseInt(sel.split(" ")[1]) || 1;
-      const dir = leg.optionType === "CE" ? -1 : 1;
-      return atmStrike + n * step * dir;
-    }
-    return leg.strike;
+    return resolveStrikeFromSelection({
+      selection: leg.strikeSelection,
+      optionType: leg.optionType || "CE",
+      spot,
+      step,
+      customStrike: leg.strike,
+    });
   }, []);
 
   const updateLeg = useCallback(
@@ -421,103 +420,119 @@ const EnhancedStrategyBuilder = () => {
     return `Custom (${legs.length} legs)`;
   }, [legs]);
 
-  const handleExecute = useCallback(async () => {
-    if (!isConnected || legs.length === 0) return;
+  const handleExecute = useCallback(async (mode: "paper" | "live") => {
+    if (legs.length === 0) return;
+    if (mode === "live" && !isConnected) return;
+
     setExecuting(true);
     try {
+      const runtimeLegs: Array<{
+        symbol: string;
+        instrument: string;
+        type: "CE" | "PE" | "FUT" | "EQ";
+        side: "BUY" | "SELL";
+        quantity: number;
+        price: number;
+        strike?: number;
+        expiry?: string;
+      }> = [];
+
       for (const leg of legs) {
         const inst = getInstrument(leg.underlying);
         const lotSize = inst?.lotSize || 25;
         const exchange = inst?.exchange || "NFO";
-        let tsym = leg.underlying;
+        const expiryDate = resolveBuilderExpiryDate(leg.expiry, leg.underlying);
 
         if (leg.instrumentType.includes("option")) {
           if (!leg.strike || !leg.optionType) {
             throw new Error(`Select a valid strike for ${leg.underlying} before executing.`);
           }
 
-          const strike = Number(leg.strike);
-          const optionType = leg.optionType;
+          if (mode === "paper") {
+            const paperSymbol = buildPaperOptionSymbol({
+              instrument: leg.underlying,
+              expiryDate,
+              strike: leg.strike,
+              optionType: leg.optionType,
+            });
+            const price = leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp;
+            const quantity = leg.lots * lotSize;
 
-          try {
-            const chainResult = await getOptionChain(leg.underlying, strike, 12, exchange);
-            const values = Array.isArray((chainResult as any)?.values)
-              ? (chainResult as any).values
-              : Array.isArray(chainResult)
-                ? chainResult
-                : [];
-
-            const exactFromChain = values.find((row: any) => {
-              const rowStrike = Number(row.strprc ?? row.strike);
-              const rowType = String(row.optt ?? "").toUpperCase();
-              return rowStrike === strike && rowType === optionType && row.tsym;
+            paper.placeOrder({
+              symbol: paperSymbol,
+              instrument: leg.underlying,
+              type: leg.optionType,
+              side: leg.action,
+              quantity,
+              price,
+              strike: leg.strike,
+              expiry: expiryDate?.toISOString(),
             });
 
-            if (exactFromChain?.tsym) {
-              tsym = String(exactFromChain.tsym);
-            }
-          } catch {
-            // fallback to search
+            runtimeLegs.push({
+              symbol: paperSymbol,
+              instrument: leg.underlying,
+              type: leg.optionType,
+              side: leg.action,
+              quantity,
+              price,
+              strike: leg.strike,
+              expiry: expiryDate?.toISOString(),
+            });
+            continue;
           }
 
-          if (tsym === leg.underlying) {
-            const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-            const expiries = getUpcomingExpiries(isWeekly, 8, leg.underlying);
-            const expiryObj = expiries.find((e) => e.label === leg.expiry) || expiries[0];
-            const expiryCode = formatExpiryForSymbol(expiryObj?.date || new Date());
-            const constructed = `${leg.underlying}${expiryCode}${optionType === "CE" ? "C" : "P"}${strike}`;
-            const searchCandidates = [constructed, `${leg.underlying} ${strike} ${optionType}`];
+          const tsym = await resolveOptionTradingSymbol({
+            instrument: leg.underlying,
+            optionType: leg.optionType,
+            strike: Number(leg.strike),
+            expiryDate,
+            exchange,
+            getOptionChain,
+            searchScrip,
+          });
 
-            for (const query of searchCandidates) {
-              try {
-                const searchResult = await searchScrip(query, exchange);
-                const values = Array.isArray(searchResult?.values)
-                  ? searchResult.values
-                  : Array.isArray(searchResult)
-                    ? searchResult
-                    : [];
-
-                const exact = values.find((row: any) => {
-                  const rowStrike = Number(row.strprc ?? row.strike);
-                  const rowType = String(row.optt ?? "").toUpperCase();
-                  const rowTsym = String(row.tsym ?? "");
-                  const strikeMatch = Number.isFinite(rowStrike)
-                    ? rowStrike === strike
-                    : rowTsym.includes(String(strike));
-                  const typeMatch = rowType
-                    ? rowType === optionType
-                    : rowTsym.includes(optionType === "CE" ? "C" : "P");
-                  return strikeMatch && typeMatch;
-                });
-
-                if (exact?.tsym) {
-                  tsym = String(exact.tsym);
-                  break;
-                }
-              } catch {
-                // continue to next fallback
-              }
-            }
+          if (!tsym) {
+            throw new Error(`Unable to resolve trading symbol for ${leg.underlying} ${leg.optionType} ${leg.strike}.`);
           }
 
-          if (tsym === leg.underlying) {
-            throw new Error(`Unable to resolve trading symbol for ${leg.underlying} ${optionType} ${strike}.`);
-          }
+          await placeOrder({
+            tradingsymbol: tsym,
+            quantity: leg.lots * lotSize,
+            price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
+            transaction_type: leg.action === "BUY" ? "B" : "S",
+            order_type: leg.entryType,
+            product: leg.productType === "NRML" ? "M" : "I",
+            exchange,
+          });
+
+          runtimeLegs.push({
+            symbol: tsym,
+            instrument: leg.underlying,
+            type: leg.optionType,
+            side: leg.action,
+            quantity: leg.lots * lotSize,
+            price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp,
+            strike: leg.strike,
+            expiry: expiryDate?.toISOString(),
+          });
         }
-
-        await placeOrder({
-          tradingsymbol: tsym,
-          quantity: leg.lots * lotSize,
-          price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
-          transaction_type: leg.action === "BUY" ? "B" : "S",
-          order_type: leg.entryType,
-          product: leg.productType === "NRML" ? "M" : "I",
-          exchange,
-        });
       }
 
+      upsertRunningStrategy({
+        id: `builder-${crypto.randomUUID()}`,
+        name: strategyName.trim() || detectedStrategy,
+        instrument: primaryInstrument,
+        source: "builder",
+        mode,
+        status: "running",
+        productType: globalProduct,
+        createdAt: new Date().toISOString(),
+        legs: runtimeLegs,
+      });
+
       toast({
-        title: "Strategy Executed",
+        title: mode === "paper" ? "Paper strategy executed" : "Live strategy executed",
         description: `${detectedStrategy} placed with ${legs.length} legs`,
       });
       setLegs([]);
@@ -530,7 +545,7 @@ const EnhancedStrategyBuilder = () => {
     } finally {
       setExecuting(false);
     }
-  }, [isConnected, legs, placeOrder, searchScrip, getOptionChain, toast, detectedStrategy]);
+  }, [legs, isConnected, paper, placeOrder, getOptionChain, searchScrip, toast, strategyName, detectedStrategy, primaryInstrument, globalProduct]);
 
   return (
     <div className="space-y-6">
@@ -566,7 +581,6 @@ const EnhancedStrategyBuilder = () => {
                   key={p}
                   onClick={() => {
                     setGlobalProduct(p);
-                    // Update all existing legs
                     setLegs((prev) => prev.map((l) => ({ ...l, productType: p })));
                   }}
                   className={cn(
@@ -580,6 +594,26 @@ const EnhancedStrategyBuilder = () => {
                 </button>
               ))}
             </div>
+
+            <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+              {(["paper", "live"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setExecutionMode(mode)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors uppercase",
+                    executionMode === mode
+                      ? mode === "paper"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-destructive text-destructive-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+
             {savedStrategies.length > 0 && (
               <select
                 value=""
@@ -1111,24 +1145,39 @@ const EnhancedStrategyBuilder = () => {
 
         {/* Execute */}
         {legs.length > 0 && (
-          <div className="px-5 py-4 border-t border-border/50">
-            {!isConnected ? (
+          <div className="px-5 py-4 border-t border-border/50 space-y-3">
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+              {(["paper", "live"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setExecutionMode(mode)}
+                  className={cn(
+                    "flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-colors",
+                    executionMode === mode
+                      ? mode === "paper"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-destructive text-destructive-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {mode === "paper" ? "Execute Paper" : "Execute Live"}
+                </button>
+              ))}
+            </div>
+
+            {executionMode === "live" && !isConnected ? (
               <div className="flex items-center gap-2 text-xs text-warning">
                 <AlertTriangle className="w-4 h-4" />
-                Connect broker to execute
+                Connect broker to execute live orders
               </div>
             ) : (
               <button
-                onClick={handleExecute}
+                onClick={() => handleExecute(executionMode)}
                 disabled={executing}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors glow-primary disabled:opacity-50"
               >
-                {executing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4" />
-                )}
-                {executing ? "Executing..." : `Execute ${detectedStrategy}`}
+                {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                {executing ? "Executing..." : executionMode === "paper" ? `Run ${detectedStrategy} in Paper` : `Execute ${detectedStrategy} Live`}
               </button>
             )}
           </div>

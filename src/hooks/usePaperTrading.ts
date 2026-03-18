@@ -296,6 +296,51 @@ export function usePaperTrading() {
     });
   }, [save]);
 
+  const closePositionsBySymbols = useCallback((symbols: string[]) => {
+    const symbolSet = new Set(symbols);
+    setPortfolio((prev) => {
+      const matchedPositions = prev.positions.filter((position) => symbolSet.has(position.symbol));
+      if (matchedPositions.length === 0) return prev;
+
+      let realizedPnl = prev.realizedPnl;
+      for (const position of matchedPositions) {
+        realizedPnl += position.pnl;
+      }
+
+      const updated: PaperPortfolio = {
+        ...prev,
+        positions: prev.positions.filter((position) => !symbolSet.has(position.symbol)),
+        realizedPnl,
+        unrealizedPnl: prev.positions
+          .filter((position) => !symbolSet.has(position.symbol))
+          .reduce((sum, position) => sum + position.pnl, 0),
+        marginUsed: 0,
+      };
+
+      updated.totalPnl = updated.realizedPnl + updated.unrealizedPnl;
+      updated.marginUsed = updated.positions.reduce((sum, position) => {
+        const notional = position.entryPrice * position.quantity;
+        return sum + (position.side === "SELL" ? notional * 0.15 : notional);
+      }, 0);
+      updated.tradeHistory = [
+        ...updated.tradeHistory,
+        ...matchedPositions.map((position) => ({
+          id: generateId(),
+          symbol: position.symbol,
+          side: position.side === "BUY" ? "SELL" : "BUY",
+          quantity: position.quantity,
+          price: position.currentPrice,
+          orderType: "MARKET" as const,
+          status: "FILLED" as const,
+          timestamp: new Date(),
+          fillPrice: position.currentPrice,
+        })),
+      ];
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
   return {
     portfolio,
     isActive,
@@ -306,5 +351,6 @@ export function usePaperTrading() {
     stopPriceTicker,
     resetPortfolio,
     closeAllPositions,
+    closePositionsBySymbols,
   };
 }

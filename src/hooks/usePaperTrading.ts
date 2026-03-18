@@ -327,7 +327,7 @@ export function usePaperTrading() {
         ...matchedPositions.map((position) => ({
           id: generateId(),
           symbol: position.symbol,
-          side: position.side === "BUY" ? "SELL" : "BUY",
+          side: (position.side === "BUY" ? "SELL" : "BUY") as "BUY" | "SELL",
           quantity: position.quantity,
           price: position.currentPrice,
           orderType: "MARKET" as const,

@@ -581,7 +581,6 @@ const EnhancedStrategyBuilder = () => {
                   key={p}
                   onClick={() => {
                     setGlobalProduct(p);
-                    // Update all existing legs
                     setLegs((prev) => prev.map((l) => ({ ...l, productType: p })));
                   }}
                   className={cn(
@@ -595,26 +594,27 @@ const EnhancedStrategyBuilder = () => {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
-                {(["paper", "live"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setExecutionMode(mode)}
-                    className={cn(
-                      "px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors uppercase",
-                      executionMode === mode
-                        ? mode === "paper"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-destructive text-destructive-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-              {savedStrategies.length > 0 && (
+
+            <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+              {(["paper", "live"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setExecutionMode(mode)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors uppercase",
+                    executionMode === mode
+                      ? mode === "paper"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-destructive text-destructive-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+
+            {savedStrategies.length > 0 && (
               <select
                 value=""
                 onChange={(e) => {

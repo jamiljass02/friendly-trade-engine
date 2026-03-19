@@ -55,7 +55,7 @@ const Settings = () => {
             </div>
           )}
 
-          <Button onClick={logout} variant="destructive" className="w-full">
+          <Button onClick={async () => { await logout(); navigate("/broker-login", { replace: true }); }} variant="destructive" className="w-full">
             <LogOut className="w-4 h-4 mr-2" />
             Disconnect & Logout
           </Button>

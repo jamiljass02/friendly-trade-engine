@@ -26,7 +26,15 @@ function getEntryTime(conditions: any[]): string | null {
   return timeCondition?.value || null;
 }
 
-function isDue(timeValue: string) {
+function isDue(timeValue: string | null) {
+  // If no time condition, execute during market hours (9:15 - 15:30)
+  if (!timeValue) {
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    const mins = h * 60 + m;
+    return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
+  }
   const now = new Date();
   const [hours, minutes] = timeValue.split(":").map(Number);
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return false;

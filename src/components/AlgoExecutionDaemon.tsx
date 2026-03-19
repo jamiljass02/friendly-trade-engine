@@ -64,7 +64,7 @@ const AlgoExecutionDaemon = () => {
 
       for (const strategy of data as any[]) {
         const entryTime = getEntryTime(strategy.entry_conditions || []);
-        if (!entryTime || !isDue(entryTime)) continue;
+        if (!isDue(entryTime)) continue;
         if (executionLog[strategy.id] === todayKey) continue;
 
         const inst = getInstrument(strategy.instrument);

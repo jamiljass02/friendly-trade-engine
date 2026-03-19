@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +10,7 @@ import { PlugZap, LogOut, Sun, Moon, Monitor } from "lucide-react";
 const Settings = () => {
   const { logout } = useBroker();
   const { session } = useShoonyaSession();
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
 
   return (

@@ -229,7 +229,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
 
     if (isConnected && selectedExpiryObj) {
       fetchLiveChain();
-      pollRef.current = setInterval(fetchLiveChain, 1000);
+      pollRef.current = setInterval(fetchLiveChain, 10000);
     } else {
       setIsLive(false);
       setLiveData(null);

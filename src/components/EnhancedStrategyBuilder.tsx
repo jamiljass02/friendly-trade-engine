@@ -852,7 +852,7 @@ const EnhancedStrategyBuilder = () => {
             legs.map((leg, i) => {
               const inst = getInstrument(leg.underlying);
               const lotSize = inst?.lotSize || 25;
-              const spot = getDefaultSpotPrice(leg.underlying);
+              const spot = getLiveSpot(leg.underlying);
               const step = inst?.strikeStep || 50;
               const isFuture = leg.instrumentType.includes("future");
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;

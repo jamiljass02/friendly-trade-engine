@@ -27,6 +27,7 @@ import { getUpcomingExpiries, type ExpiryDate } from "@/lib/expiry-utils";
 import { resolveStrikeFromSelection } from "@/lib/option-strikes";
 import { buildPaperOptionSymbol, resolveBuilderExpiryDate, resolveOptionTradingSymbol } from "@/lib/strategy-order-utils";
 import { upsertRunningStrategy } from "@/lib/strategy-runtime";
+import { useIndexPrices } from "@/hooks/useIndexPrices";
 import PayoffChart from "./PayoffChart";
 import StrategyTemplates from "./StrategyTemplates";
 import { useBroker } from "@/hooks/useBroker";

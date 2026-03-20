@@ -353,7 +353,7 @@ const EnhancedStrategyBuilder = () => {
     for (const leg of legs) {
       const inst = getInstrument(leg.underlying);
       const lotSize = inst?.lotSize || 25;
-      const spot = getDefaultSpotPrice(leg.underlying);
+      const spot = getLiveSpot(leg.underlying);
       const totalQty = leg.lots * lotSize;
 
       if (leg.instrumentType.includes("option")) {

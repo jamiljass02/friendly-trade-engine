@@ -318,7 +318,7 @@ const EnhancedStrategyBuilder = () => {
       vega = 0;
     for (const leg of legs) {
       if (!leg.instrumentType.includes("option") || !leg.strike) continue;
-      const spot = getDefaultSpotPrice(leg.underlying);
+      const spot = getLiveSpot(leg.underlying);
       const inst = getInstrument(leg.underlying);
       const lotSize = inst?.lotSize || 25;
       const iv = 15 + Math.random() * 5; // Mock IV

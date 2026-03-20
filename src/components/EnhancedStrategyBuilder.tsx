@@ -197,7 +197,7 @@ const EnhancedStrategyBuilder = () => {
       const resolvedType = type || (firstLeg?.instrumentType || "index_option");
       
       const inst = getInstrument(resolvedUnderlying);
-      const spot = getDefaultSpotPrice(resolvedUnderlying);
+      const spot = getLiveSpot(resolvedUnderlying);
       const step = inst?.strikeStep || 50;
       const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
       const expiries = getUpcomingExpiries(isWeekly, 4, resolvedUnderlying);

@@ -251,7 +251,7 @@ const EnhancedStrategyBuilder = () => {
 
           // When optionType changes, recalculate strike for current strikeSelection
           if (updates.optionType && updates.optionType !== l.optionType && !l.instrumentType.includes("future")) {
-            const spot = getDefaultSpotPrice(updated.underlying);
+            const spot = getLiveSpot(updated.underlying);
             const inst = getInstrument(updated.underlying);
             const step = inst?.strikeStep || 50;
             updated.strike = recalcStrike(updated, spot, step);

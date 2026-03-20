@@ -259,7 +259,7 @@ const EnhancedStrategyBuilder = () => {
 
           // Recalc LTP if strike/underlying changes
           if (updates.underlying || updates.strike || updates.optionType) {
-            const spot = getDefaultSpotPrice(updated.underlying);
+            const spot = getLiveSpot(updated.underlying);
             if (updated.instrumentType.includes("future")) {
               updated.ltp = spot;
             } else if (updated.strike) {

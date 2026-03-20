@@ -151,6 +151,13 @@ const EnhancedStrategyBuilder = () => {
   const primaryInst = getInstrument(primaryInstrument);
   const primaryLotSize = primaryInst?.lotSize || 25;
 
+  /** Get live spot price from broker feed, fall back to hardcoded default */
+  const getLiveSpot = useCallback((symbol: string): number => {
+    const live = indexPrices.find((p) => p.name === symbol);
+    if (live && live.price > 0) return live.price;
+    return getDefaultSpotPrice(symbol);
+  }, [indexPrices]);
+
   const filteredStocks = useMemo(() => {
     let stocks = FNO_STOCKS;
     if (sectorFilter !== "all") {

@@ -27,6 +27,7 @@ import { getUpcomingExpiries, type ExpiryDate } from "@/lib/expiry-utils";
 import { resolveStrikeFromSelection } from "@/lib/option-strikes";
 import { buildPaperOptionSymbol, resolveBuilderExpiryDate, resolveOptionTradingSymbol } from "@/lib/strategy-order-utils";
 import { upsertRunningStrategy } from "@/lib/strategy-runtime";
+import { useIndexPrices } from "@/hooks/useIndexPrices";
 import PayoffChart from "./PayoffChart";
 import StrategyTemplates from "./StrategyTemplates";
 import { useBroker } from "@/hooks/useBroker";
@@ -115,6 +116,7 @@ function calcGreeks(
 
 const EnhancedStrategyBuilder = () => {
   const { isConnected, placeOrder, searchScrip, getOptionChain } = useBroker();
+  const { prices: indexPrices } = useIndexPrices();
   const paper = usePaperTrading();
   const { toast } = useToast();
   const [legs, setLegs] = useState<StrategyLeg[]>([]);
@@ -148,6 +150,13 @@ const EnhancedStrategyBuilder = () => {
   const primaryInstrument = legs[0]?.underlying || "NIFTY";
   const primaryInst = getInstrument(primaryInstrument);
   const primaryLotSize = primaryInst?.lotSize || 25;
+
+  /** Get live spot price from broker feed, fall back to hardcoded default */
+  const getLiveSpot = useCallback((symbol: string): number => {
+    const live = indexPrices.find((p) => p.name === symbol);
+    if (live && live.price > 0) return live.price;
+    return getDefaultSpotPrice(symbol);
+  }, [indexPrices]);
 
   const filteredStocks = useMemo(() => {
     let stocks = FNO_STOCKS;
@@ -188,7 +197,7 @@ const EnhancedStrategyBuilder = () => {
       const resolvedType = type || (firstLeg?.instrumentType || "index_option");
       
       const inst = getInstrument(resolvedUnderlying);
-      const spot = getDefaultSpotPrice(resolvedUnderlying);
+      const spot = getLiveSpot(resolvedUnderlying);
       const step = inst?.strikeStep || 50;
       const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
       const expiries = getUpcomingExpiries(isWeekly, 4, resolvedUnderlying);
@@ -242,7 +251,7 @@ const EnhancedStrategyBuilder = () => {
 
           // When optionType changes, recalculate strike for current strikeSelection
           if (updates.optionType && updates.optionType !== l.optionType && !l.instrumentType.includes("future")) {
-            const spot = getDefaultSpotPrice(updated.underlying);
+            const spot = getLiveSpot(updated.underlying);
             const inst = getInstrument(updated.underlying);
             const step = inst?.strikeStep || 50;
             updated.strike = recalcStrike(updated, spot, step);
@@ -250,7 +259,7 @@ const EnhancedStrategyBuilder = () => {
 
           // Recalc LTP if strike/underlying changes
           if (updates.underlying || updates.strike || updates.optionType) {
-            const spot = getDefaultSpotPrice(updated.underlying);
+            const spot = getLiveSpot(updated.underlying);
             if (updated.instrumentType.includes("future")) {
               updated.ltp = spot;
             } else if (updated.strike) {
@@ -309,7 +318,7 @@ const EnhancedStrategyBuilder = () => {
       vega = 0;
     for (const leg of legs) {
       if (!leg.instrumentType.includes("option") || !leg.strike) continue;
-      const spot = getDefaultSpotPrice(leg.underlying);
+      const spot = getLiveSpot(leg.underlying);
       const inst = getInstrument(leg.underlying);
       const lotSize = inst?.lotSize || 25;
       const iv = 15 + Math.random() * 5; // Mock IV
@@ -344,7 +353,7 @@ const EnhancedStrategyBuilder = () => {
     for (const leg of legs) {
       const inst = getInstrument(leg.underlying);
       const lotSize = inst?.lotSize || 25;
-      const spot = getDefaultSpotPrice(leg.underlying);
+      const spot = getLiveSpot(leg.underlying);
       const totalQty = leg.lots * lotSize;
 
       if (leg.instrumentType.includes("option")) {
@@ -843,7 +852,7 @@ const EnhancedStrategyBuilder = () => {
             legs.map((leg, i) => {
               const inst = getInstrument(leg.underlying);
               const lotSize = inst?.lotSize || 25;
-              const spot = getDefaultSpotPrice(leg.underlying);
+              const spot = getLiveSpot(leg.underlying);
               const step = inst?.strikeStep || 50;
               const isFuture = leg.instrumentType.includes("future");
               const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;

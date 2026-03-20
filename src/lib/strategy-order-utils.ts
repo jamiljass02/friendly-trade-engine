@@ -71,69 +71,68 @@ export async function resolveOptionTradingSymbol({
 }: ResolveOptionTradingSymbolParams): Promise<string> {
   const resolvedExchange = exchange || getInstrument(instrument)?.exchange || "NFO";
   const expiryCode = expiryDate ? formatExpiryForSymbol(expiryDate) : null;
-  let tradingSymbol = expiryCode
-    ? `${instrument}${expiryCode}${optionType === "CE" ? "C" : "P"}${strike}`
-    : `${instrument}${optionType === "CE" ? "C" : "P"}${strike}`;
 
+  // Build multiple candidate symbols to try (different broker formats)
+  const ceSuffix = optionType === "CE" ? "C" : "P";
+  const candidates = expiryCode
+    ? [
+        `${instrument}${expiryCode}${ceSuffix}${strike}`,
+        `${instrument}${expiryCode}${optionType}${strike}`,
+      ]
+    : [
+        `${instrument}${ceSuffix}${strike}`,
+        `${instrument}${optionType}${strike}`,
+      ];
+
+  let tradingSymbol = candidates[0];
+
+  // Helper: match a row from option chain / search results
+  const matchRow = (row: any): boolean => {
+    const rowStrike = Number(row.strprc ?? row.strike);
+    const rowType = String(row.optt ?? "").toUpperCase();
+    const rowTsym = String(row.tsym ?? "");
+    const strikeMatch = Number.isFinite(rowStrike) ? rowStrike === strike : rowTsym.includes(String(strike));
+    const typeMatch = rowType ? rowType === optionType : rowTsym.includes(optionType);
+    const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
+    return strikeMatch && typeMatch && expiryMatches && !!row.tsym;
+  };
+
+  const extractValues = (result: any): any[] =>
+    Array.isArray((result as any)?.values) ? (result as any).values
+      : Array.isArray(result) ? result : [];
+
+  // 1. Try option chain first
   try {
     const chainResult = await getOptionChain(instrument, strike, 12, resolvedExchange);
-    const values = Array.isArray((chainResult as any)?.values)
-      ? (chainResult as any).values
-      : Array.isArray(chainResult)
-        ? chainResult
-        : [];
-
-    const exactFromChain = values.find((row: any) => {
-      const rowStrike = Number(row.strprc ?? row.strike);
-      const rowType = String(row.optt ?? "").toUpperCase();
-      const rowTsym = String(row.tsym ?? "");
-      const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
-      return rowStrike === strike && rowType === optionType && row.tsym && expiryMatches;
-    });
-
-    if (exactFromChain?.tsym) {
-      return String(exactFromChain.tsym);
-    }
+    const values = extractValues(chainResult);
+    const exact = values.find(matchRow);
+    if (exact?.tsym) return String(exact.tsym);
   } catch {
-    // fall through to search fallback
+    // fall through
   }
 
-  const searchCandidates = [
-    tradingSymbol,
+  // 2. Try search with multiple queries
+  const searchQueries = [
+    ...candidates,
     `${instrument} ${strike} ${optionType}`,
+    `${instrument}${strike}${optionType}`,
   ];
 
-  for (const query of searchCandidates) {
+  for (const query of searchQueries) {
     try {
       const searchResult = await searchScrip(query, resolvedExchange);
-      const values = Array.isArray((searchResult as any)?.values)
-        ? (searchResult as any).values
-        : Array.isArray(searchResult)
-          ? searchResult
-          : [];
-
-      const exact = values.find((row: any) => {
-        const rowStrike = Number(row.strprc ?? row.strike);
-        const rowType = String(row.optt ?? "").toUpperCase();
-        const rowTsym = String(row.tsym ?? "");
-        const strikeMatch = Number.isFinite(rowStrike)
-          ? rowStrike === strike
-          : rowTsym.includes(String(strike));
-        const typeMatch = rowType
-          ? rowType === optionType
-          : rowTsym.includes(optionType === "CE" ? "C" : "P");
-        const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
-        return strikeMatch && typeMatch && expiryMatches;
-      });
-
+      const values = extractValues(searchResult);
+      const exact = values.find(matchRow);
       if (exact?.tsym) {
         tradingSymbol = String(exact.tsym);
-        break;
+        console.log(`[SymbolResolve] Matched: ${tradingSymbol} from query: ${query}`);
+        return tradingSymbol;
       }
     } catch {
       // continue
     }
   }
 
+  console.warn(`[SymbolResolve] No match found for ${instrument} ${optionType} ${strike}, using fallback: ${tradingSymbol}`);
   return tradingSymbol;
 }

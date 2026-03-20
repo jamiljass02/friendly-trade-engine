@@ -116,6 +116,7 @@ function calcGreeks(
 
 const EnhancedStrategyBuilder = () => {
   const { isConnected, placeOrder, searchScrip, getOptionChain } = useBroker();
+  const { prices: indexPrices } = useIndexPrices();
   const paper = usePaperTrading();
   const { toast } = useToast();
   const [legs, setLegs] = useState<StrategyLeg[]>([]);

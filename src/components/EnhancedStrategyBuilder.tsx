@@ -16,6 +16,8 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getBrokerOrderId, getOrderFillPrice, roundToTick, waitForOrderFill } from "@/lib/broker-order-utils";
+import { monitorMoveToCost, type StopOrderWatch } from "@/lib/broker-stop-loss";
 import {
   INDEX_INSTRUMENTS,
   FNO_STOCKS,
@@ -115,7 +117,7 @@ function calcGreeks(
 }
 
 const EnhancedStrategyBuilder = () => {
-  const { isConnected, placeOrder, searchScrip, getOptionChain } = useBroker();
+  const { isConnected, placeOrder, searchScrip, getOptionChain, getOrders, modifyOrder } = useBroker();
   const { prices: indexPrices } = useIndexPrices();
   const paper = usePaperTrading();
   const { toast } = useToast();
@@ -445,11 +447,13 @@ const EnhancedStrategyBuilder = () => {
         strike?: number;
         expiry?: string;
       }> = [];
+      const stopWatch: StopOrderWatch[] = [];
 
       for (const leg of legs) {
         const inst = getInstrument(leg.underlying);
         const lotSize = inst?.lotSize || 25;
         const exchange = inst?.exchange || "NFO";
+        const tickSize = inst?.tickSize || 0.05;
         const expiryDate = resolveBuilderExpiryDate(leg.expiry, leg.underlying);
 
         if (leg.instrumentType.includes("option")) {
@@ -458,25 +462,29 @@ const EnhancedStrategyBuilder = () => {
           }
 
           if (mode === "paper") {
+            const order = paper.placeOrder({
+              symbol: buildPaperOptionSymbol({
+                instrument: leg.underlying,
+                expiryDate,
+                strike: leg.strike,
+                optionType: leg.optionType,
+              }),
+              instrument: leg.underlying,
+              type: leg.optionType,
+              side: leg.action,
+              quantity: leg.lots * lotSize,
+              price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp,
+              strike: leg.strike,
+              expiry: expiryDate?.toISOString(),
+            });
             const paperSymbol = buildPaperOptionSymbol({
               instrument: leg.underlying,
               expiryDate,
               strike: leg.strike,
               optionType: leg.optionType,
             });
-            const price = leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp;
+            const price = order.fillPrice || (leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp);
             const quantity = leg.lots * lotSize;
-
-            paper.placeOrder({
-              symbol: paperSymbol,
-              instrument: leg.underlying,
-              type: leg.optionType,
-              side: leg.action,
-              quantity,
-              price,
-              strike: leg.strike,
-              expiry: expiryDate?.toISOString(),
-            });
 
             runtimeLegs.push({
               symbol: paperSymbol,
@@ -505,7 +513,8 @@ const EnhancedStrategyBuilder = () => {
             throw new Error(`Unable to resolve trading symbol for ${leg.underlying} ${leg.optionType} ${leg.strike}.`);
           }
 
-          await placeOrder({
+          let entryPrice = leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp;
+          const entryResult = await placeOrder({
             tradingsymbol: tsym,
             quantity: leg.lots * lotSize,
             price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : 0,
@@ -515,17 +524,71 @@ const EnhancedStrategyBuilder = () => {
             exchange,
           });
 
+          const entryOrderId = getBrokerOrderId(entryResult);
+          if (entryOrderId) {
+            const fill = await waitForOrderFill({ orderId: entryOrderId, getOrders });
+            if (fill.state === "rejected") {
+              throw new Error(`Order rejected for ${tsym}.`);
+            }
+            if (fill.order) {
+              entryPrice = getOrderFillPrice(fill.order, entryPrice);
+            }
+          }
+
+          if (leg.stopLossPct && leg.stopLossPct > 0) {
+            const stopTriggerRaw = leg.action === "SELL"
+              ? entryPrice * (1 + leg.stopLossPct / 100)
+              : entryPrice * (1 - leg.stopLossPct / 100);
+
+            const stopResult = await placeOrder({
+              tradingsymbol: tsym,
+              quantity: leg.lots * lotSize,
+              price: 0,
+              trigger_price: Math.max(tickSize, roundToTick(stopTriggerRaw, tickSize)),
+              transaction_type: leg.action === "BUY" ? "S" : "B",
+              order_type: "SL-MKT",
+              product: leg.productType === "NRML" ? "M" : "I",
+              exchange,
+            });
+
+            const stopOrderId = getBrokerOrderId(stopResult);
+            if (stopOrderId) {
+              stopWatch.push({
+                stopOrderId,
+                symbol: tsym,
+                quantity: leg.lots * lotSize,
+                exchange,
+                entryPrice,
+              });
+            }
+          }
+
           runtimeLegs.push({
             symbol: tsym,
             instrument: leg.underlying,
             type: leg.optionType,
             side: leg.action,
             quantity: leg.lots * lotSize,
-            price: leg.entryType === "LMT" ? leg.limitPrice || leg.ltp : leg.ltp,
+            price: entryPrice,
             strike: leg.strike,
             expiry: expiryDate?.toISOString(),
           });
         }
+      }
+
+      if (mode === "live" && stopWatch.length > 1) {
+        void monitorMoveToCost({
+          watchList: stopWatch,
+          getOrders,
+          modifyOrder,
+          tickSize: getInstrument(primaryInstrument)?.tickSize || 0.05,
+          onMoved: () => {
+            toast({
+              title: "Move to Cost Applied",
+              description: "Remaining stop-loss orders moved to entry price.",
+            });
+          },
+        });
       }
 
       upsertRunningStrategy({
@@ -554,7 +617,7 @@ const EnhancedStrategyBuilder = () => {
     } finally {
       setExecuting(false);
     }
-  }, [legs, isConnected, paper, placeOrder, getOptionChain, searchScrip, toast, strategyName, detectedStrategy, primaryInstrument, globalProduct]);
+  }, [legs, isConnected, paper, placeOrder, getOptionChain, searchScrip, getOrders, modifyOrder, toast, strategyName, detectedStrategy, primaryInstrument, globalProduct]);
 
   return (
     <div className="space-y-6">

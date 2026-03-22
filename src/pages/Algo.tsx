@@ -394,7 +394,10 @@ const Algo = () => {
         status: editingStrategy.status,
         recurrence: editingStrategy.recurrence,
         telegram_alert: editingStrategy.telegramAlert,
-        backtest_result: editingStrategy.backtestResult as any || null,
+          backtest_result: {
+            ...(editingStrategy.backtestResult || {}),
+            moveToCost: editingStrategy.moveToCost,
+          } as any,
         product_type: editingStrategy.productType,
         execution_mode: editingStrategy.executionMode,
       };

@@ -40,6 +40,8 @@ export interface PaperPortfolio {
 }
 
 const STORAGE_KEY = "tradex_paper_portfolio";
+const PAPER_MODE_KEY = "tradex_paper_mode";
+const UPDATE_EVENT = "paper-trading-updated";
 
 function generateId() {
   return Math.random().toString(36).substring(2, 10);
@@ -67,45 +69,73 @@ const defaultPortfolio: PaperPortfolio = {
   tradeHistory: [],
 };
 
-export function usePaperTrading() {
-  const [portfolio, setPortfolio] = useState<PaperPortfolio>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          ...parsed,
-          positions: (parsed.positions || []).map((p: any) => ({
-            ...p,
-            timestamp: new Date(p.timestamp),
-          })),
-          orders: (parsed.orders || []).map((o: any) => ({
-            ...o,
-            timestamp: new Date(o.timestamp),
-          })),
-          tradeHistory: (parsed.tradeHistory || []).map((o: any) => ({
-            ...o,
-            timestamp: new Date(o.timestamp),
-          })),
-        };
-      }
-    } catch {}
-    return defaultPortfolio;
-  });
+function emitUpdate() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(UPDATE_EVENT));
+  }
+}
 
-  const [isActive, setIsActive] = useState(() => {
-    return localStorage.getItem("tradex_paper_mode") === "true";
-  });
+function loadPortfolio(): PaperPortfolio {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        ...parsed,
+        positions: (parsed.positions || []).map((p: any) => ({
+          ...p,
+          timestamp: new Date(p.timestamp),
+        })),
+        orders: (parsed.orders || []).map((o: any) => ({
+          ...o,
+          timestamp: new Date(o.timestamp),
+        })),
+        tradeHistory: (parsed.tradeHistory || []).map((o: any) => ({
+          ...o,
+          timestamp: new Date(o.timestamp),
+        })),
+      };
+    }
+  } catch {}
+
+  return defaultPortfolio;
+}
+
+function loadPaperMode() {
+  return localStorage.getItem(PAPER_MODE_KEY) === "true";
+}
+
+export function usePaperTrading() {
+  const [portfolio, setPortfolio] = useState<PaperPortfolio>(() => loadPortfolio());
+
+  const [isActive, setIsActive] = useState(() => loadPaperMode());
 
   const priceTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const save = useCallback((p: PaperPortfolio) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+    emitUpdate();
+  }, []);
+
+  useEffect(() => {
+    const sync = () => {
+      setPortfolio(loadPortfolio());
+      setIsActive(loadPaperMode());
+    };
+
+    window.addEventListener(UPDATE_EVENT, sync);
+    window.addEventListener("storage", sync);
+
+    return () => {
+      window.removeEventListener(UPDATE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   const togglePaperMode = useCallback((active: boolean) => {
     setIsActive(active);
-    localStorage.setItem("tradex_paper_mode", String(active));
+    localStorage.setItem(PAPER_MODE_KEY, String(active));
+    emitUpdate();
   }, []);
 
   const placeOrder = useCallback(

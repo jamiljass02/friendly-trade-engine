@@ -8,12 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, Wallet, Target, BarChart3, Activity, Bot, Pause, Play, Square, X, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRunningStrategies } from "@/hooks/useRunningStrategies";
-import { removeRunningStrategy, updateRunningStrategyStatus, type RunningStrategyRuntime } from "@/lib/strategy-runtime";
+import { removeRunningStrategy, saveRunningStrategies, updateRunningStrategyStatus, type RunningStrategyRuntime } from "@/lib/strategy-runtime";
 import { usePaperTrading, type PaperPosition } from "@/hooks/usePaperTrading";
+import { usePositions, type Position } from "@/hooks/usePositions";
 
 const Dashboard = () => {
   const runningStrategies = useRunningStrategies();
   const paper = usePaperTrading();
+  const { positions: livePositions } = usePositions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Start price ticker for paper positions so P&L updates every 5 seconds
@@ -23,42 +25,64 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [paper.portfolio.positions.length, paper.tickPrices]);
 
+  const getStrategyMatches = useCallback((strategy: RunningStrategyRuntime) => {
+    const legSymbols = new Set(strategy.legs.map((l) => l.symbol));
+    const sourcePositions = strategy.mode === "paper" ? paper.portfolio.positions : livePositions;
+    return sourcePositions.filter((pos) => legSymbols.has(pos.symbol));
+  }, [paper.portfolio.positions, livePositions]);
+
+  const getStrategyPnl = useCallback((strategy: RunningStrategyRuntime) => {
+    const matchedPositions = getStrategyMatches(strategy);
+    const totalPnl = matchedPositions.reduce((sum, pos) => sum + Number(pos.pnl || 0), 0);
+    return { totalPnl, matchedPositions };
+  }, [getStrategyMatches]);
+
+  useEffect(() => {
+    const staleCutoff = Date.now() - 60_000;
+    const next = runningStrategies.filter((item) => {
+      const hasOpenPositions = getStrategyMatches(item).length > 0;
+      const createdAt = new Date(item.createdAt).getTime();
+      return hasOpenPositions || (!Number.isNaN(createdAt) && createdAt > staleCutoff);
+    });
+
+    if (next.length !== runningStrategies.length) {
+      saveRunningStrategies(next);
+    }
+  }, [runningStrategies, getStrategyMatches]);
+
+  const visibleStrategies = useMemo(
+    () => runningStrategies.filter((item) => getStrategyMatches(item).length > 0),
+    [runningStrategies, getStrategyMatches]
+  );
+
   const activeCount = useMemo(
-    () => runningStrategies.filter((item) => item.status === "running").length,
-    [runningStrategies]
+    () => visibleStrategies.filter((item) => item.status === "running").length,
+    [visibleStrategies]
   );
 
   const paperCount = useMemo(
-    () => runningStrategies.filter((item) => item.mode === "paper").length,
-    [runningStrategies]
+    () => visibleStrategies.filter((item) => item.mode === "paper").length,
+    [visibleStrategies]
   );
 
-  // Calculate P&L for a strategy by matching its leg symbols to paper positions
-  const getStrategyPnl = useCallback((strategy: RunningStrategyRuntime) => {
-    const legSymbols = new Set(strategy.legs.map((l) => l.symbol));
-    let totalPnl = 0;
-    const matchedPositions: PaperPosition[] = [];
-    for (const pos of paper.portfolio.positions) {
-      if (legSymbols.has(pos.symbol)) {
-        totalPnl += pos.pnl;
-        matchedPositions.push(pos);
-      }
-    }
-    return { totalPnl, matchedPositions };
-  }, [paper.portfolio.positions]);
-
   const totalStrategyPnl = useMemo(() => {
-    return runningStrategies.reduce((sum, s) => sum + getStrategyPnl(s).totalPnl, 0);
-  }, [runningStrategies, getStrategyPnl]);
+    return visibleStrategies.reduce((sum, s) => sum + getStrategyPnl(s).totalPnl, 0);
+  }, [visibleStrategies, getStrategyPnl]);
 
-  const squareOffStrategy = (id: string, symbols: string[]) => {
-    paper.closePositionsBySymbols(symbols);
+  const squareOffStrategy = (id: string, strategy: RunningStrategyRuntime) => {
+    if (strategy.mode === "paper") {
+      paper.closePositionsBySymbols(strategy.legs.map((leg) => leg.symbol));
+    }
     removeRunningStrategy(id);
   };
 
   const closeAll = () => {
-    paper.closePositionsBySymbols(runningStrategies.flatMap((item) => item.legs.map((leg) => leg.symbol)));
-    runningStrategies.forEach((item) => removeRunningStrategy(item.id));
+    paper.closePositionsBySymbols(
+      visibleStrategies
+        .filter((item) => item.mode === "paper")
+        .flatMap((item) => item.legs.map((leg) => leg.symbol))
+    );
+    visibleStrategies.forEach((item) => removeRunningStrategy(item.id));
   };
 
   return (
@@ -100,7 +124,7 @@ const Dashboard = () => {
                 Running Strategies
                 {activeCount > 0 && <Badge variant="secondary" className="text-[9px] ml-1">{activeCount} active</Badge>}
               </CardTitle>
-              {runningStrategies.length > 0 && (
+              {visibleStrategies.length > 0 && (
                 <Button size="sm" variant="destructive" onClick={closeAll} className="h-7 text-xs gap-1">
                   <Square className="w-3 h-3" />
                   Close All
@@ -109,14 +133,14 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            {runningStrategies.length === 0 ? (
+             {visibleStrategies.length === 0 ? (
               <div className="text-center py-8">
                 <Bot className="w-8 h-8 mx-auto text-muted-foreground/20 mb-2" />
                 <p className="text-xs text-muted-foreground">No strategy is running right now</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {runningStrategies.map((item) => {
+                {visibleStrategies.map((item) => {
                   const { totalPnl, matchedPositions } = getStrategyPnl(item);
                   const isExpanded = expandedId === item.id;
 
@@ -173,7 +197,7 @@ const Dashboard = () => {
                               size="icon"
                               variant="ghost"
                               className="w-7 h-7"
-                              onClick={() => squareOffStrategy(item.id, item.legs.map((leg) => leg.symbol))}
+                              onClick={() => squareOffStrategy(item.id, item)}
                               title="Square Off"
                             >
                               <X className="w-3.5 h-3.5 text-loss" />
@@ -199,9 +223,14 @@ const Dashboard = () => {
                             </thead>
                             <tbody>
                               {item.legs.map((leg, idx) => {
-                                const matched = matchedPositions.find((p) => p.symbol === leg.symbol);
+                                const matched = matchedPositions.find((p) => p.symbol === leg.symbol) as PaperPosition | Position | undefined;
                                 const legPnl = matched?.pnl ?? 0;
-                                const currentPrice = matched?.currentPrice ?? leg.price;
+                                const currentPrice = item.mode === "paper"
+                                  ? ((matched as PaperPosition | undefined)?.currentPrice ?? leg.price)
+                                  : ((matched as Position | undefined)?.ltp ?? leg.price);
+                                const entryPrice = item.mode === "paper"
+                                  ? leg.price
+                                  : ((matched as Position | undefined)?.avgPrice ?? leg.price);
                                 return (
                                   <tr key={idx} className="border-b border-border/20 last:border-0">
                                     <td className="px-3 py-1.5 font-mono text-foreground">{leg.symbol}</td>
@@ -214,7 +243,7 @@ const Dashboard = () => {
                                       <span className={cn("font-medium", leg.side === "BUY" ? "text-profit" : "text-loss")}>{leg.side}</span>
                                     </td>
                                     <td className="text-right px-2 py-1.5 text-foreground">{leg.quantity}</td>
-                                    <td className="text-right px-2 py-1.5 text-muted-foreground">₹{leg.price.toFixed(2)}</td>
+                                    <td className="text-right px-2 py-1.5 text-muted-foreground">₹{entryPrice.toFixed(2)}</td>
                                     <td className="text-right px-2 py-1.5 text-foreground">₹{currentPrice.toFixed(2)}</td>
                                     <td className={cn("text-right px-3 py-1.5 font-semibold tabular-nums", legPnl >= 0 ? "text-profit" : "text-loss")}>
                                       {legPnl >= 0 ? "+" : ""}₹{legPnl.toFixed(0)}

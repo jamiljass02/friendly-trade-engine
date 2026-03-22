@@ -153,7 +153,7 @@ export function usePositions() {
       const data = await getPositions();
       const parsed = parsePositions(data);
       setPositions((prev) => {
-        const newPos = parsed.length > 0 ? parsed : generateMockPositions();
+        const newPos = parsed;
         // Carry prevPnl for flash animations
         return newPos.map((np) => {
           const old = prev.find((o) => o.symbol === np.symbol);
@@ -161,7 +161,7 @@ export function usePositions() {
         });
       });
     } catch {
-      setPositions((prev) => prev.length > 0 ? prev : generateMockPositions());
+      setPositions([]);
     } finally {
       setLoading(false);
     }

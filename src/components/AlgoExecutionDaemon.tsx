@@ -8,6 +8,8 @@ import {
   resolveAlgoExpiryDate,
   resolveOptionTradingSymbol,
 } from "@/lib/strategy-order-utils";
+import { getBrokerOrderId, getOrderFillPrice, roundToTick, waitForOrderFill } from "@/lib/broker-order-utils";
+import { monitorMoveToCost, type StopOrderWatch } from "@/lib/broker-stop-loss";
 import { upsertRunningStrategy } from "@/lib/strategy-runtime";
 import { useAuth } from "@/hooks/useAuth";
 import { useBroker } from "@/hooks/useBroker";
@@ -38,6 +40,11 @@ function getEntryDayOfWeek(conditions: any[]): string | null {
   return dayCondition?.value || null;
 }
 
+function getEntryDaysToExpiry(conditions: any[]): string | null {
+  const dteCondition = conditions.find((c) => c.type === "days_to_expiry");
+  return dteCondition?.value || null;
+}
+
 function isDue(timeValue: string | null) {
   if (!timeValue) {
     const now = new Date();
@@ -55,8 +62,25 @@ function isDue(timeValue: string | null) {
 function isDayMatch(dayValue: string | null): boolean {
   if (!dayValue) return true; // No day condition means any day
   const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const today = dayNames[new Date().getDay()];
-  return today.toLowerCase() === dayValue.toLowerCase();
+  const shortDayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayIndex = new Date().getDay();
+  const normalized = dayValue.trim().toLowerCase();
+  return normalized === dayNames[todayIndex].toLowerCase() || normalized === shortDayNames[todayIndex].toLowerCase();
+}
+
+function isDaysToExpiryMatch(daysValue: string | null, strategy: any): boolean {
+  if (!daysValue) return true;
+
+  const target = Number(daysValue);
+  if (!Number.isFinite(target)) return true;
+
+  const expiries = (strategy.legs || [])
+    .map((leg: any) => resolveAlgoExpiryDate(leg.expiry, strategy.instrument, leg.customExpiry))
+    .filter((value: Date | undefined): value is Date => value instanceof Date && !Number.isNaN(value.getTime()));
+
+  if (expiries.length === 0) return false;
+
+  return expiries.some((expiry) => Math.ceil((expiry.getTime() - Date.now()) / 86400000) === target);
 }
 
 const AlgoExecutionDaemon = () => {
@@ -75,8 +99,9 @@ const AlgoExecutionDaemon = () => {
       // Fetch ALL deployed strategies (both paper and live)
       const { data, error } = await supabase
         .from("algo_strategies")
-        .select("id, name, instrument, legs, entry_conditions, execution_mode, product_type, status")
-        .eq("status", "deployed");
+          .select("id, name, instrument, legs, entry_conditions, execution_mode, product_type, status, backtest_result, user_id")
+          .eq("status", "deployed")
+          .eq("user_id", user.id);
 
       if (error || !data) return;
 
@@ -84,9 +109,11 @@ const AlgoExecutionDaemon = () => {
         const conditions = strategy.entry_conditions || [];
         const entryTime = getEntryTime(conditions);
         const entryDay = getEntryDayOfWeek(conditions);
+        const entryDte = getEntryDaysToExpiry(conditions);
 
         // Check day-of-week condition
         if (!isDayMatch(entryDay)) continue;
+        if (!isDaysToExpiryMatch(entryDte, strategy)) continue;
         // Check time condition
         if (!isDue(entryTime)) continue;
         // Already executed today
@@ -120,6 +147,7 @@ const AlgoExecutionDaemon = () => {
         }>;
 
         let allLegsSuccess = true;
+        const stopWatch: StopOrderWatch[] = [];
 
         for (const leg of strategy.legs || []) {
           if (leg.segment !== "OPT") continue;
@@ -135,6 +163,8 @@ const AlgoExecutionDaemon = () => {
 
           const expiryDate = resolveAlgoExpiryDate(leg.expiry, strategy.instrument, leg.customExpiry);
           const quantity = Math.max(1, (leg.lots || 1) * lotSize);
+          const tickSize = inst?.tickSize || 0.05;
+          const stopLossPct = Number(leg.stopLossPct ?? leg.stopLoss ?? 0);
 
           if (isLive) {
             // === LIVE EXECUTION ===
@@ -157,11 +187,22 @@ const AlgoExecutionDaemon = () => {
                 tradingsymbol: tradingSymbol,
                 quantity,
                 transaction_type: leg.side === "BUY" ? "B" : "S",
-                product: strategy.product_type === "NRML" ? "M" : "M",
+                product: strategy.product_type === "NRML" ? "M" : "I",
                 order_type: "MKT",
               });
 
-              const fillPrice = Number(orderResult?.avgprc || orderResult?.prc || 0);
+              let fillPrice = Number(orderResult?.avgprc || orderResult?.prc || 0);
+              const entryOrderId = getBrokerOrderId(orderResult);
+
+              if (entryOrderId) {
+                const fill = await waitForOrderFill({ orderId: entryOrderId, getOrders: broker.getOrders });
+                if (fill.state === "rejected") {
+                  throw new Error(`Order rejected for ${tradingSymbol}`);
+                }
+                if (fill.order) {
+                  fillPrice = getOrderFillPrice(fill.order, fillPrice || 0);
+                }
+              }
 
               runtimeLegs.push({
                 symbol: tradingSymbol,
@@ -179,22 +220,32 @@ const AlgoExecutionDaemon = () => {
               });
 
               // Place SL order if stop_loss is configured
-              if (leg.stopLoss && fillPrice > 0) {
+              if (stopLossPct > 0 && fillPrice > 0) {
                 const slPrice = leg.side === "SELL"
-                  ? fillPrice * (1 + leg.stopLoss / 100)
-                  : fillPrice * (1 - leg.stopLoss / 100);
-                const slTrigger = Math.round(slPrice * 20) / 20;
+                  ? fillPrice * (1 + stopLossPct / 100)
+                  : fillPrice * (1 - stopLossPct / 100);
+                const slTrigger = Math.max(tickSize, roundToTick(slPrice, tickSize));
 
                 try {
-                  await broker.placeOrder({
+                  const stopResult = await broker.placeOrder({
                     exchange,
                     tradingsymbol: tradingSymbol,
                     quantity,
                     trigger_price: slTrigger,
                     transaction_type: leg.side === "BUY" ? "S" : "B",
-                    product: strategy.product_type === "NRML" ? "M" : "M",
+                    product: strategy.product_type === "NRML" ? "M" : "I",
                     order_type: "SL-MKT",
                   });
+                  const stopOrderId = getBrokerOrderId(stopResult);
+                  if (stopOrderId) {
+                    stopWatch.push({
+                      stopOrderId,
+                      symbol: tradingSymbol,
+                      quantity,
+                      exchange,
+                      entryPrice: fillPrice,
+                    });
+                  }
                   console.log(`[AlgoDaemon] SL order placed for ${tradingSymbol} at trigger ${slTrigger}`);
                 } catch (slErr) {
                   console.error(`[AlgoDaemon] SL order failed for ${tradingSymbol}:`, slErr);
@@ -217,7 +268,7 @@ const AlgoExecutionDaemon = () => {
             });
             const price = Math.max(1, Math.round((20 + Math.abs(spot - strike) / 10) * 100) / 100);
 
-            paper.placeOrder({
+            const order = paper.placeOrder({
               symbol,
               instrument: strategy.instrument,
               type: leg.optionType,
@@ -228,17 +279,33 @@ const AlgoExecutionDaemon = () => {
               expiry: expiryDate?.toISOString(),
             });
 
+            const fillPrice = order.fillPrice || price;
+
             runtimeLegs.push({
               symbol,
               instrument: strategy.instrument,
               type: leg.optionType,
               side: leg.side,
               quantity,
-              price,
+              price: fillPrice,
               strike,
               expiry: expiryDate?.toISOString(),
             });
           }
+        }
+
+        if (isLive && strategy.backtest_result?.moveToCost && stopWatch.length > 1) {
+          void monitorMoveToCost({
+            watchList: stopWatch,
+            getOrders: broker.getOrders,
+            modifyOrder: broker.modifyOrder,
+            tickSize: inst?.tickSize || 0.05,
+            onMoved: () => {
+              toast.success("Move to cost applied", {
+                description: `Strategy: ${strategy.name}`,
+              });
+            },
+          });
         }
 
         if (runtimeLegs.length > 0) {
@@ -270,7 +337,7 @@ const AlgoExecutionDaemon = () => {
     void run();
     const intervalId = window.setInterval(() => void run(), 30000);
     return () => window.clearInterval(intervalId);
-  }, [paper, user, broker.isConnected, prices]);
+  }, [paper, user, broker.isConnected, broker.getOptionChain, broker.searchScrip, broker.placeOrder, broker.getOrders, broker.modifyOrder, prices]);
 
   return null;
 };

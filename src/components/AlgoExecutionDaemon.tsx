@@ -111,6 +111,7 @@ const AlgoExecutionDaemon = () => {
     if (!user) return;
 
     const run = async () => {
+      try {
       const todayKey = new Date().toDateString();
       const executionLog = getExecutionLog();
 

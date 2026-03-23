@@ -119,6 +119,17 @@ interface AlgoStrategy {
   backtestResult?: BacktestSummary;
 }
 
+function hasBacktestMetrics(backtestResult: AlgoStrategy["backtestResult"]): backtestResult is BacktestSummary {
+  return Boolean(
+    backtestResult &&
+    typeof backtestResult.totalPnl === "number" &&
+    typeof backtestResult.winRate === "number" &&
+    typeof backtestResult.sharpeRatio === "number" &&
+    typeof backtestResult.maxDrawdown === "number" &&
+    Array.isArray(backtestResult.results)
+  );
+}
+
 // ── Constants ──
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
 const lotSizes: Record<string, number> = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 15 };
@@ -1028,7 +1039,7 @@ const Algo = () => {
                 </div>
 
                 {/* Backtest Results */}
-                {editingStrategy.backtestResult && (
+                {hasBacktestMetrics(editingStrategy.backtestResult) && (
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-sm flex items-center gap-2">
@@ -1175,7 +1186,7 @@ const Algo = () => {
                       </div>
 
                       {/* Backtest Summary */}
-                      {strat.backtestResult && (
+                      {hasBacktestMetrics(strat.backtestResult) && (
                         <div className="flex items-center gap-3 text-[10px] mb-3 p-2 rounded bg-secondary/30 border border-border/50">
                           <span className={cn("font-mono font-bold", strat.backtestResult.totalPnl >= 0 ? "text-profit" : "text-loss")}>
                             P&L: {strat.backtestResult.totalPnl >= 0 ? "+" : ""}₹{strat.backtestResult.totalPnl.toLocaleString("en-IN")}
@@ -1297,7 +1308,7 @@ const Algo = () => {
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {strat.backtestResult && (
+                            {hasBacktestMetrics(strat.backtestResult) && (
                               <span className={cn("text-sm font-mono font-bold mr-2", strat.backtestResult.totalPnl >= 0 ? "text-profit" : "text-loss")}>
                                 {strat.backtestResult.totalPnl >= 0 ? "+" : ""}₹{strat.backtestResult.totalPnl.toLocaleString("en-IN")}
                               </span>

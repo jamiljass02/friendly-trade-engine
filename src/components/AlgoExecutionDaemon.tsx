@@ -347,10 +347,24 @@ const AlgoExecutionDaemon = () => {
           }
 
           console.log(`[AlgoDaemon] Strategy "${strategy.name}" executed (${isLive ? "LIVE" : "PAPER"}) with ${runtimeLegs.length} legs`);
+
+          // Send Telegram alert if enabled
+          if (strategy.telegram_alert) {
+            const legsSummary = runtimeLegs.map(l => `${l.side} ${l.symbol} @ ₹${l.price}`).join("\n");
+            void sendTelegramAlert(
+              `🤖 <b>Algo Executed: ${strategy.name}</b>\n` +
+              `Mode: ${isLive ? "🔴 LIVE" : "📄 Paper"}\n` +
+              `Instrument: ${strategy.instrument}\n` +
+              `Legs:\n${legsSummary}`
+            );
+          }
         }
       }
 
       saveExecutionLog(executionLog);
+      } catch (err) {
+        console.error("[AlgoDaemon] Daemon run error:", err);
+      }
     };
 
     void run();

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePaperTrading } from "@/hooks/usePaperTrading";
 import { getDefaultSpotPrice, getInstrument } from "@/lib/instruments";
@@ -15,6 +15,24 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBroker } from "@/hooks/useBroker";
 import { useIndexPrices } from "@/hooks/useIndexPrices";
 import { toast } from "sonner";
+
+async function sendTelegramAlert(message: string) {
+  try {
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://ytzzmnharipqcucfachn.supabase.co";
+    const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0enptbmhhcmlwcWN1Y2ZhY2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMzc3ODUsImV4cCI6MjA4NzgxMzc4NX0.IjrxQYoFZRBuC_hpqDU8Wr2C3QQGHZsrb1XsaO9m9R4";
+    await fetch(`${SUPABASE_URL}/functions/v1/telegram-alert`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${ANON_KEY}`,
+      },
+      body: JSON.stringify({ message }),
+    });
+  } catch (err) {
+    console.error("[AlgoDaemon] Telegram alert failed:", err);
+  }
+}
 
 const EXECUTION_LOG_KEY = "tradex_algo_execution_log";
 

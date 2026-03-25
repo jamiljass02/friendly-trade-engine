@@ -7,6 +7,7 @@ interface ResolveOptionTradingSymbolParams {
   strike: number;
   expiryDate?: Date;
   exchange?: string;
+  strict?: boolean;
   getOptionChain: (symbol: string, strikePrice: number, count?: number, exchange?: string) => Promise<any>;
   searchScrip: (searchText: string, exchange?: string) => Promise<any>;
 }
@@ -66,6 +67,7 @@ export async function resolveOptionTradingSymbol({
   strike,
   expiryDate,
   exchange,
+  strict = false,
   getOptionChain,
   searchScrip,
 }: ResolveOptionTradingSymbolParams): Promise<string> {
@@ -131,6 +133,10 @@ export async function resolveOptionTradingSymbol({
     } catch {
       // continue
     }
+  }
+
+  if (strict) {
+    throw new Error(`Unable to resolve valid trading symbol for ${instrument} ${optionType} ${strike}`);
   }
 
   console.warn(`[SymbolResolve] No match found for ${instrument} ${optionType} ${strike}, using fallback: ${tradingSymbol}`);

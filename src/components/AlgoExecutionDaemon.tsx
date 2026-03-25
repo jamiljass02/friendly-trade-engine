@@ -35,6 +35,7 @@ async function sendTelegramAlert(message: string) {
 }
 
 const EXECUTION_LOG_KEY = "tradex_algo_execution_log";
+const INVALID_SYMBOL_ERROR_PATTERN = /invalid trading symbol|unable to resolve valid trading symbol/i;
 
 function getExecutionLog(): Record<string, string> {
   try {
@@ -46,6 +47,10 @@ function getExecutionLog(): Record<string, string> {
 
 function saveExecutionLog(log: Record<string, string>) {
   localStorage.setItem(EXECUTION_LOG_KEY, JSON.stringify(log));
+}
+
+function hasExecutionRecordForToday(record: string | undefined, todayKey: string) {
+  return typeof record === "string" && record.startsWith(todayKey);
 }
 
 function getEntryTime(conditions: any[]): string | null {
@@ -136,7 +141,7 @@ const AlgoExecutionDaemon = () => {
         // Check time condition
         if (!isDue(entryTime)) continue;
         // Already executed today
-        if (executionLog[strategy.id] === todayKey) continue;
+        if (hasExecutionRecordForToday(executionLog[strategy.id], todayKey)) continue;
 
         const isLive = strategy.execution_mode === "live";
 
@@ -166,6 +171,7 @@ const AlgoExecutionDaemon = () => {
         }>;
 
         let allLegsSuccess = true;
+        let lockStrategyForToday = false;
         const stopWatch: StopOrderWatch[] = [];
 
         for (const leg of strategy.legs || []) {
@@ -195,6 +201,7 @@ const AlgoExecutionDaemon = () => {
                 strike,
                 expiryDate,
                 exchange,
+                strict: true,
                 getOptionChain: broker.getOptionChain,
                 searchScrip: broker.searchScrip,
               });
@@ -271,10 +278,14 @@ const AlgoExecutionDaemon = () => {
                 }
               }
             } catch (err: any) {
+              const message = err instanceof Error ? err.message : String(err);
               console.error(`[AlgoDaemon] LIVE order failed for ${strategy.name}:`, err);
-              toast.error(`Algo order failed: ${err.message}`, {
+              toast.error(`Algo order failed: ${message}`, {
                 description: `Strategy: ${strategy.name}, ${leg.optionType} ${leg.strikeSelection}`,
               });
+              if (INVALID_SYMBOL_ERROR_PATTERN.test(message)) {
+                lockStrategyForToday = true;
+              }
               allLegsSuccess = false;
             }
           } else {
@@ -343,7 +354,7 @@ const AlgoExecutionDaemon = () => {
 
           // Mark as executed only if all legs succeeded (or paper mode)
           if (!isLive || allLegsSuccess) {
-            executionLog[strategy.id] = todayKey;
+            executionLog[strategy.id] = `${todayKey}::success`;
           }
 
           console.log(`[AlgoDaemon] Strategy "${strategy.name}" executed (${isLive ? "LIVE" : "PAPER"}) with ${runtimeLegs.length} legs`);
@@ -358,6 +369,10 @@ const AlgoExecutionDaemon = () => {
               `Legs:\n${legsSummary}`
             );
           }
+        }
+
+        if (lockStrategyForToday) {
+          executionLog[strategy.id] = `${todayKey}::invalid-symbol`;
         }
       }
 

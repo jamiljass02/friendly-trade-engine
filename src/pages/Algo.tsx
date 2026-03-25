@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import AppLayout from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,44 @@ interface AlgoStrategy {
   backtestResult?: BacktestSummary;
 }
 
+class AlgoPageErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("[AlgoPage] Render crash prevented:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card>
+          <CardContent className="p-8 text-center space-y-3">
+            <AlertTriangle className="w-8 h-8 mx-auto text-warning" />
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Algo page recovered</h2>
+              <p className="text-xs text-muted-foreground">
+                A saved strategy has invalid data. Refresh the page and re-open the strategy.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 function hasBacktestMetrics(backtestResult: AlgoStrategy["backtestResult"]): backtestResult is BacktestSummary {
   return Boolean(
     backtestResult &&
@@ -128,6 +166,91 @@ function hasBacktestMetrics(backtestResult: AlgoStrategy["backtestResult"]): bac
     typeof backtestResult.maxDrawdown === "number" &&
     Array.isArray(backtestResult.results)
   );
+}
+
+function ensureArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function ensureDate(value: unknown): Date {
+  const parsed = value instanceof Date ? value : new Date(String(value || ""));
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function sanitizeBacktestResult(value: unknown): BacktestSummary | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const candidate = value as Partial<BacktestSummary> & { results?: unknown };
+  if (
+    typeof candidate.totalPnl !== "number" ||
+    typeof candidate.totalTrades !== "number" ||
+    typeof candidate.winRate !== "number" ||
+    typeof candidate.maxDrawdown !== "number" ||
+    typeof candidate.sharpeRatio !== "number" ||
+    typeof candidate.avgPremium !== "number" ||
+    typeof candidate.profitFactor !== "number" ||
+    typeof candidate.maxConsecutiveLosses !== "number"
+  ) {
+    return undefined;
+  }
+
+  const results = ensureArray<BacktestSummary["results"][number]>(candidate.results).filter(
+    (item): item is BacktestSummary["results"][number] =>
+      Boolean(
+        item &&
+        typeof item.date === "string" &&
+        typeof item.pnl === "number" &&
+        typeof item.cumulativePnl === "number" &&
+        typeof item.premium === "number" &&
+        typeof item.maxDrawdown === "number" &&
+        typeof item.tradeCount === "number"
+      )
+  );
+
+  return {
+    totalPnl: candidate.totalPnl,
+    totalTrades: candidate.totalTrades,
+    winRate: candidate.winRate,
+    maxDrawdown: candidate.maxDrawdown,
+    sharpeRatio: candidate.sharpeRatio,
+    avgPremium: candidate.avgPremium,
+    profitFactor: candidate.profitFactor,
+    maxConsecutiveLosses: candidate.maxConsecutiveLosses,
+    results,
+  };
+}
+
+function normalizeAlgoStrategyRow(row: any): AlgoStrategy {
+  const status = ["draft", "backtested", "deployed", "paused"].includes(row?.status)
+    ? row.status
+    : "draft";
+  const recurrence = ["once", "daily", "weekly", "monthly"].includes(row?.recurrence)
+    ? row.recurrence
+    : "daily";
+  const productType = row?.product_type === "NRML" ? "NRML" : "MIS";
+  const executionMode = row?.execution_mode === "live" ? "live" : "paper";
+  const backtestResult = sanitizeBacktestResult(row?.backtest_result);
+
+  return {
+    id: String(row?.id || generateId()),
+    name: String(row?.name || "My Strategy"),
+    instrument: String(row?.instrument || "NIFTY"),
+    legs: ensureArray<StrategyLeg>(row?.legs),
+    entryConditions: ensureArray<EntryCondition>(row?.entry_conditions),
+    exitConditions: ensureArray<ExitCondition>(row?.exit_conditions),
+    status,
+    recurrence,
+    telegramAlert: Boolean(row?.telegram_alert),
+    moveToCost: typeof row?.backtest_result?.moveToCost === "boolean" ? row.backtest_result.moveToCost : true,
+    productType,
+    executionMode,
+    createdAt: ensureDate(row?.created_at),
+    backtestResult,
+  };
+}
+
+function formatScheduleTime(value: unknown) {
+  return typeof value === "string" && value.length >= 5 ? value.slice(0, 5) : "--:--";
 }
 
 // ── Constants ──
@@ -246,22 +369,7 @@ const Algo = () => {
           .order('created_at', { ascending: false });
         if (error) throw error;
         if (data) {
-          setStrategies(data.map((row: any) => ({
-            id: row.id,
-            name: row.name,
-            instrument: row.instrument,
-            legs: row.legs || [],
-            entryConditions: row.entry_conditions || [],
-            exitConditions: row.exit_conditions || [],
-            status: row.status,
-            recurrence: row.recurrence,
-            telegramAlert: row.telegram_alert,
-            moveToCost: row.backtest_result?.moveToCost ?? true,
-            productType: row.product_type || "MIS",
-            executionMode: row.execution_mode || "paper",
-            createdAt: new Date(row.created_at),
-            backtestResult: row.backtest_result || undefined,
-          })));
+          setStrategies(data.map(normalizeAlgoStrategyRow));
         }
       } catch (err) {
         console.error('Failed to load strategies:', err);
@@ -522,6 +630,7 @@ const Algo = () => {
 
   return (
     <AppLayout>
+      <AlgoPageErrorBoundary>
       <div className="p-6 space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -1351,7 +1460,7 @@ const Algo = () => {
                         <Clock className="w-4 h-4 text-primary" />
                         <div>
                           <span className="text-xs font-medium text-foreground">{s.instrument} {s.strategy_type}</span>
-                          <span className="text-[10px] text-muted-foreground ml-2">{s.schedule_time.slice(0, 5)} IST</span>
+                          <span className="text-[10px] text-muted-foreground ml-2">{formatScheduleTime(s.schedule_time)} IST</span>
                         </div>
                         <Badge variant={s.is_active ? "default" : "secondary"} className="text-[8px]">
                           {s.is_active ? "ACTIVE" : "PAUSED"}
@@ -1373,6 +1482,7 @@ const Algo = () => {
           </TabsContent>
         </Tabs>
       </div>
+      </AlgoPageErrorBoundary>
     </AppLayout>
   );
 };

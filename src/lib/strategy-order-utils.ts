@@ -74,6 +74,15 @@ export async function resolveOptionTradingSymbol({
   const resolvedExchange = exchange || getInstrument(instrument)?.exchange || "NFO";
   const expiryCode = expiryDate ? formatExpiryForSymbol(expiryDate) : null;
 
+  const normalizeOptionType = (value: unknown): "CE" | "PE" | null => {
+    const normalized = String(value ?? "").trim().toUpperCase();
+    if (["CE", "C", "CALL"].includes(normalized)) return "CE";
+    if (["PE", "P", "PUT"].includes(normalized)) return "PE";
+    return null;
+  };
+
+  const normalizeTradingSymbol = (value: unknown) => String(value ?? "").trim().toUpperCase();
+
   // Build multiple candidate symbols to try (different broker formats)
   const ceSuffix = optionType === "CE" ? "C" : "P";
   const candidates = expiryCode
@@ -90,13 +99,19 @@ export async function resolveOptionTradingSymbol({
 
   // Helper: match a row from option chain / search results
   const matchRow = (row: any): boolean => {
-    const rowStrike = Number(row.strprc ?? row.strike);
-    const rowType = String(row.optt ?? "").toUpperCase();
-    const rowTsym = String(row.tsym ?? "");
+    const rowStrike = Number(row.strprc ?? row.strike ?? row.strike_price ?? row.dname?.match(/(\d+(?:\.\d+)?)/)?.[1]);
+    const rowTsym = normalizeTradingSymbol(row.tsym ?? row.tradingsymbol ?? row.token_tsym ?? row.symbol);
+    const rowType = normalizeOptionType(row.optt ?? row.option_type ?? row.instname ?? row.instrument);
     const strikeMatch = Number.isFinite(rowStrike) ? rowStrike === strike : rowTsym.includes(String(strike));
-    const typeMatch = rowType ? rowType === optionType : rowTsym.includes(optionType);
+    const typeMatch = rowType ? rowType === optionType : rowTsym.includes(optionType) || rowTsym.includes(ceSuffix);
     const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
     return strikeMatch && typeMatch && expiryMatches && !!row.tsym;
+  };
+
+  const pickTradingSymbol = (row: any): string | null => {
+    const raw = row?.tsym ?? row?.tradingsymbol ?? row?.token_tsym ?? row?.symbol;
+    const value = String(raw ?? "").trim();
+    return value ? value : null;
   };
 
   const extractValues = (result: any): any[] =>
@@ -108,7 +123,8 @@ export async function resolveOptionTradingSymbol({
     const chainResult = await getOptionChain(instrument, strike, 12, resolvedExchange);
     const values = extractValues(chainResult);
     const exact = values.find(matchRow);
-    if (exact?.tsym) return String(exact.tsym);
+    const exactSymbol = exact ? pickTradingSymbol(exact) : null;
+    if (exactSymbol) return exactSymbol;
   } catch {
     // fall through
   }
@@ -125,8 +141,9 @@ export async function resolveOptionTradingSymbol({
       const searchResult = await searchScrip(query, resolvedExchange);
       const values = extractValues(searchResult);
       const exact = values.find(matchRow);
-      if (exact?.tsym) {
-        tradingSymbol = String(exact.tsym);
+      const exactSymbol = exact ? pickTradingSymbol(exact) : null;
+      if (exactSymbol) {
+        tradingSymbol = exactSymbol;
         console.log(`[SymbolResolve] Matched: ${tradingSymbol} from query: ${query}`);
         return tradingSymbol;
       }

@@ -5,7 +5,7 @@ import { useBroker } from "@/hooks/useBroker";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getInstrument, getDefaultSpotPrice } from "@/lib/instruments";
-import { formatExpiryForSymbol } from "@/lib/expiry-utils";
+import { resolveOptionTradingSymbol } from "@/lib/strategy-order-utils";
 import {
   getBrokerOrderId,
   getOrderFillPrice,
@@ -105,74 +105,19 @@ const StrategyExecutor = ({
     selectedLegs.filter((l) => l.action === "SELL").length * qty * spotPrice * 0.15
   );
 
-  const buildTradingSymbol = useCallback((leg: SelectedLeg): string => {
-    if (!expiryDate) {
-      const now = new Date();
-      const day = now.getDate();
-      const month = now.toLocaleString("en", { month: "short" }).toUpperCase();
-      const year = now.getFullYear().toString().slice(-2);
-      return `${instrument}${String(day).padStart(2, "0")}${month}${year}${leg.type === "CE" ? "C" : "P"}${leg.strike}`;
-    }
-    const expiryStr = formatExpiryForSymbol(expiryDate);
-    return `${instrument}${expiryStr}${leg.type === "CE" ? "C" : "P"}${leg.strike}`;
-  }, [instrument, expiryDate]);
-
   const resolveTradingSymbol = useCallback(async (leg: SelectedLeg) => {
     if (leg.tradingSymbol) return leg.tradingSymbol;
-
-    let tsym = buildTradingSymbol(leg);
-    const expiryCode = expiryDate ? formatExpiryForSymbol(expiryDate) : null;
-
-    try {
-      const chainResult = await getOptionChain(instrument, leg.strike, 12, inst?.exchange);
-      const values = Array.isArray((chainResult as any)?.values)
-        ? (chainResult as any).values
-        : Array.isArray(chainResult)
-          ? chainResult
-          : [];
-
-      const exactFromChain = values.find((row: any) => {
-        const strike = Number(row.strprc ?? row.strike);
-        const type = String(row.optt ?? "").toUpperCase();
-        const rowTsym = String(row.tsym ?? "");
-        const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
-        return strike === leg.strike && type === leg.type && row.tsym && expiryMatches;
-      });
-
-      if (exactFromChain?.tsym) {
-        return String(exactFromChain.tsym);
-      }
-    } catch {
-      // fallback to search
-    }
-
-    try {
-      const searchResult = await searchScrip(tsym, inst?.exchange || "NFO");
-      const values = Array.isArray(searchResult?.values)
-        ? searchResult.values
-        : Array.isArray(searchResult)
-          ? searchResult
-          : [];
-
-      if (values.length > 0) {
-        const match = values.find((v: any) => {
-          const strike = Number(v.strprc ?? v.strike);
-          const type = String(v.optt ?? "").toUpperCase();
-          const rowTsym = String(v.tsym ?? "");
-          const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
-          if (Number.isFinite(strike) && type) {
-            return strike === leg.strike && type === leg.type && v.tsym && expiryMatches;
-          }
-          return expiryMatches && rowTsym.includes(String(leg.strike)) && rowTsym.includes(leg.type === "CE" ? "C" : "P");
-        });
-        if (match?.tsym) tsym = match.tsym;
-      }
-    } catch {
-      console.log("Search scrip failed, using constructed symbol:", tsym);
-    }
-
-    return tsym;
-  }, [buildTradingSymbol, getOptionChain, instrument, searchScrip, inst?.exchange]);
+    return resolveOptionTradingSymbol({
+      instrument,
+      optionType: leg.type,
+      strike: leg.strike,
+      expiryDate,
+      exchange: inst?.exchange,
+      strict: true,
+      getOptionChain,
+      searchScrip,
+    });
+  }, [expiryDate, getOptionChain, instrument, searchScrip, inst?.exchange]);
 
   const monitorMoveToCost = useCallback(async (watchList: StopOrderWatch[]) => {
     if (watchList.length < 2) return;
@@ -256,7 +201,7 @@ const StrategyExecutor = ({
           price: 0,
           transaction_type: leg.action === "BUY" ? "B" : "S",
           order_type: "MKT",
-          product: "M",
+          product: "I",
           exchange: inst.exchange,
         });
 
@@ -289,7 +234,7 @@ const StrategyExecutor = ({
             trigger_price: stopTrigger,
             transaction_type: leg.action === "BUY" ? "S" : "B",
             order_type: "SL-MKT",
-            product: "M",
+            product: "I",
             exchange: inst.exchange,
           });
 

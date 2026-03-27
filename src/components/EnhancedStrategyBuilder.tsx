@@ -505,6 +505,7 @@ const EnhancedStrategyBuilder = () => {
             strike: Number(leg.strike),
             expiryDate,
             exchange,
+            strict: true,
             getOptionChain,
             searchScrip,
           });

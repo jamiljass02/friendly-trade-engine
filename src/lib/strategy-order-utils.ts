@@ -83,7 +83,7 @@ export async function resolveOptionTradingSymbol({
 
   const normalizeTradingSymbol = (value: unknown) => String(value ?? "").trim().toUpperCase();
 
-  // Build multiple candidate symbols to try (different broker formats)
+  // Build multiple candidate symbols to try (Shoonya format: NIFTY31MAR26C24250)
   const ceSuffix = optionType === "CE" ? "C" : "P";
   const candidates = expiryCode
     ? [
@@ -102,8 +102,8 @@ export async function resolveOptionTradingSymbol({
     const rowStrike = Number(row.strprc ?? row.strike ?? row.strike_price ?? row.dname?.match(/(\d+(?:\.\d+)?)/)?.[1]);
     const rowTsym = normalizeTradingSymbol(row.tsym ?? row.tradingsymbol ?? row.token_tsym ?? row.symbol);
     const rowType = normalizeOptionType(row.optt ?? row.option_type ?? row.instname ?? row.instrument);
-    const strikeMatch = Number.isFinite(rowStrike) ? rowStrike === strike : rowTsym.includes(String(strike));
-    const typeMatch = rowType ? rowType === optionType : rowTsym.includes(optionType) || rowTsym.includes(ceSuffix);
+    const strikeMatch = Number.isFinite(rowStrike) ? Math.abs(rowStrike - strike) < 0.01 : rowTsym.includes(String(strike));
+    const typeMatch = rowType ? rowType === optionType : rowTsym.includes(optionType) || rowTsym.endsWith(`${ceSuffix}${strike}`) || rowTsym.includes(`${ceSuffix}${strike}`);
     const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
     return strikeMatch && typeMatch && expiryMatches && !!row.tsym;
   };
@@ -118,37 +118,52 @@ export async function resolveOptionTradingSymbol({
     Array.isArray((result as any)?.values) ? (result as any).values
       : Array.isArray(result) ? result : [];
 
-  // 1. Try option chain first
+  // 1. Try option chain first — Shoonya requires futures symbol as tsym (e.g. NIFTY31MAR26F)
+  const futuresSymbol = expiryCode ? `${instrument}${expiryCode}F` : instrument;
   try {
-    const chainResult = await getOptionChain(instrument, strike, 12, resolvedExchange);
+    console.log(`[SymbolResolve] Trying option chain with futuresSymbol=${futuresSymbol}, strike=${strike}`);
+    const chainResult = await getOptionChain(futuresSymbol, strike, 12, resolvedExchange);
     const values = extractValues(chainResult);
+    console.log(`[SymbolResolve] Option chain returned ${values.length} rows`);
+    if (values.length > 0) {
+      console.log(`[SymbolResolve] Sample row tsym: ${values[0]?.tsym}, optt: ${values[0]?.optt}, strprc: ${values[0]?.strprc}`);
+    }
     const exact = values.find(matchRow);
     const exactSymbol = exact ? pickTradingSymbol(exact) : null;
-    if (exactSymbol) return exactSymbol;
-  } catch {
-    // fall through
+    if (exactSymbol) {
+      console.log(`[SymbolResolve] Matched from option chain: ${exactSymbol}`);
+      return exactSymbol;
+    }
+  } catch (e) {
+    console.warn(`[SymbolResolve] Option chain failed for ${futuresSymbol}:`, e);
   }
 
-  // 2. Try search with multiple queries
+  // 2. Try search with multiple queries (Shoonya SearchScrip uses partial text matching)
   const searchQueries = [
     ...candidates,
+    // Try shorter search text that Shoonya can partial-match
+    expiryCode ? `${instrument}${expiryCode}${ceSuffix}` : `${instrument}${ceSuffix}${strike}`,
     `${instrument} ${strike} ${optionType}`,
-    `${instrument}${strike}${optionType}`,
   ];
 
   for (const query of searchQueries) {
     try {
+      console.log(`[SymbolResolve] Searching: "${query}" on ${resolvedExchange}`);
       const searchResult = await searchScrip(query, resolvedExchange);
       const values = extractValues(searchResult);
+      console.log(`[SymbolResolve] Search returned ${values.length} results for "${query}"`);
+      if (values.length > 0 && values.length <= 5) {
+        console.log(`[SymbolResolve] Results:`, values.map((v: any) => v.tsym).join(", "));
+      }
       const exact = values.find(matchRow);
       const exactSymbol = exact ? pickTradingSymbol(exact) : null;
       if (exactSymbol) {
         tradingSymbol = exactSymbol;
-        console.log(`[SymbolResolve] Matched: ${tradingSymbol} from query: ${query}`);
+        console.log(`[SymbolResolve] ✓ Matched: ${tradingSymbol} from query: ${query}`);
         return tradingSymbol;
       }
-    } catch {
-      // continue
+    } catch (e) {
+      console.warn(`[SymbolResolve] Search failed for "${query}":`, e);
     }
   }
 

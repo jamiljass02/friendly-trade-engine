@@ -34,7 +34,7 @@ export const INDEX_INSTRUMENTS: IndexInstrument[] = [
     name: "Nifty 50",
     exchange: "NFO",
     spotToken: "26000",
-    lotSize: 65,
+    lotSize: 75,
     tickSize: 0.05,
     strikeStep: 50,
     weeklyExpiry: true,

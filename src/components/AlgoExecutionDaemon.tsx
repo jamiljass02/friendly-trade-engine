@@ -1,12 +1,12 @@
 import { useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePaperTrading } from "@/hooks/usePaperTrading";
-import { getDefaultSpotPrice, getInstrument } from "@/lib/instruments";
+import { getDefaultSpotPrice, getEffectiveLotSize, getInstrument } from "@/lib/instruments";
 import { resolveStrikeFromSelection } from "@/lib/option-strikes";
 import {
   buildPaperOptionSymbol,
   resolveAlgoExpiryDate,
-  resolveOptionTradingSymbol,
+  resolveOptionContract,
 } from "@/lib/strategy-order-utils";
 import { getBrokerOrderId, getOrderFillPrice, roundToTick, waitForOrderFill } from "@/lib/broker-order-utils";
 import { monitorMoveToCost, type StopOrderWatch } from "@/lib/broker-stop-loss";
@@ -152,7 +152,7 @@ const AlgoExecutionDaemon = () => {
         }
 
         const inst = getInstrument(strategy.instrument);
-        const lotSize = inst?.lotSize || 1;
+        const fallbackLotSize = getEffectiveLotSize(strategy.instrument);
         const step = inst?.strikeStep || 50;
 
         // Use live spot price if available, else fallback
@@ -187,7 +187,7 @@ const AlgoExecutionDaemon = () => {
           if (!strike) continue;
 
           const expiryDate = resolveAlgoExpiryDate(leg.expiry, strategy.instrument, leg.customExpiry);
-          const quantity = Math.max(1, (leg.lots || 1) * lotSize);
+          let lotSize = fallbackLotSize;
           const tickSize = inst?.tickSize || 0.05;
           const stopLossPct = Number(leg.stopLossPct ?? leg.stopLoss ?? 0);
 
@@ -195,7 +195,7 @@ const AlgoExecutionDaemon = () => {
             // === LIVE EXECUTION ===
             try {
               const exchange = inst?.exchange || "NFO";
-              const tradingSymbol = await resolveOptionTradingSymbol({
+              const contract = await resolveOptionContract({
                 instrument: strategy.instrument,
                 optionType: leg.optionType,
                 strike,
@@ -205,6 +205,9 @@ const AlgoExecutionDaemon = () => {
                 getOptionChain: broker.getOptionChain,
                 searchScrip: broker.searchScrip,
               });
+              const tradingSymbol = contract.tradingSymbol;
+              lotSize = getEffectiveLotSize(strategy.instrument, contract.lotSize);
+              const quantity = Math.max(1, (leg.lots || 1) * lotSize);
 
               console.log(`[AlgoDaemon] LIVE placing ${leg.side} ${tradingSymbol} qty=${quantity}`);
 
@@ -290,6 +293,7 @@ const AlgoExecutionDaemon = () => {
             }
           } else {
             // === PAPER EXECUTION ===
+            const quantity = Math.max(1, (leg.lots || 1) * lotSize);
             const symbol = buildPaperOptionSymbol({
               instrument: strategy.instrument,
               expiryDate,

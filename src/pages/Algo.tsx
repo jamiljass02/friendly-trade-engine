@@ -68,6 +68,7 @@ import {
   Cell,
 } from "recharts";
 import { useBacktesting, type BacktestSummary } from "@/hooks/useBacktesting";
+import { getEffectiveLotSize } from "@/lib/instruments";
 
 // ── Types ──
 interface StrategyLeg {
@@ -255,7 +256,7 @@ function formatScheduleTime(value: unknown) {
 
 // ── Constants ──
 const instruments = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "BANKEX"];
-const lotSizes: Record<string, number> = { NIFTY: 65, BANKNIFTY: 30, SENSEX: 20, FINNIFTY: 25, MIDCPNIFTY: 50, BANKEX: 15 };
+const getLotSize = (symbol: string) => getEffectiveLotSize(symbol);
 
 function getStrikeColor(sel: string): string {
   return getStrikeColorClass(sel);
@@ -568,7 +569,7 @@ const Algo = () => {
         instrument: editingStrategy.instrument,
         strategy: stratType,
         days: 90,
-        quantity: (editingStrategy.legs[0]?.lots || 1) * (lotSizes[editingStrategy.instrument] || 50),
+        quantity: (editingStrategy.legs[0]?.lots || 1) * getLotSize(editingStrategy.instrument),
         stopLossPct: parseFloat(editingStrategy.exitConditions.find((c) => c.type === "sl_pct")?.value || "30"),
       });
       setEditingStrategy({ ...editingStrategy, backtestResult: result, status: "backtested" });
@@ -962,9 +963,9 @@ const Algo = () => {
                     {/* Add Leg + Lot Info */}
                     <div className="mt-3 flex items-center justify-between">
                       <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-                        <span>Lot size: <span className="font-mono text-foreground">{lotSizes[editingStrategy.instrument] || 50}</span></span>
+                        <span>Lot size: <span className="font-mono text-foreground">{getLotSize(editingStrategy.instrument)}</span></span>
                         <span>Total qty: <span className="font-mono text-foreground">
-                          {editingStrategy.legs.reduce((s, l) => s + l.lots, 0) * (lotSizes[editingStrategy.instrument] || 50)}
+                          {editingStrategy.legs.reduce((s, l) => s + l.lots, 0) * getLotSize(editingStrategy.instrument)}
                         </span></span>
                       </div>
                       <Button size="sm" variant="outline" onClick={addLeg} className="h-7 text-xs gap-1">

@@ -12,6 +12,11 @@ interface ResolveOptionTradingSymbolParams {
   searchScrip: (searchText: string, exchange?: string) => Promise<any>;
 }
 
+export interface ResolvedOptionContract {
+  tradingSymbol: string;
+  lotSize?: number;
+}
+
 export function resolveBuilderExpiryDate(expiryLabel: string, instrument: string): Date | undefined {
   const inst = getInstrument(instrument);
   const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
@@ -61,7 +66,37 @@ export function buildPaperOptionSymbol(params: {
   return `${params.instrument} ${expiryCode} ${params.strike} ${params.optionType}`;
 }
 
-export async function resolveOptionTradingSymbol({
+function parseStrikeFromText(value: unknown): number | null {
+  const matches = String(value ?? "").match(/\d+(?:\.\d+)?/g);
+  if (!matches?.length) return null;
+
+  for (let i = matches.length - 1; i >= 0; i -= 1) {
+    const parsed = Number(matches[i]);
+    if (Number.isFinite(parsed) && parsed >= 100) return parsed;
+  }
+
+  const fallback = Number(matches[matches.length - 1]);
+  return Number.isFinite(fallback) ? fallback : null;
+}
+
+function parseRowLotSize(row: any): number | undefined {
+  const candidates = [row?.ls, row?.lotsize, row?.lot_size, row?.qty];
+  for (const candidate of candidates) {
+    const parsed = Number.parseInt(String(candidate ?? "").trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return undefined;
+}
+
+function normalizeExpiryDateText(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatExpiryForSymbol(parsed);
+}
+
+export async function resolveOptionContract({
   instrument,
   optionType,
   strike,
@@ -70,7 +105,7 @@ export async function resolveOptionTradingSymbol({
   strict = false,
   getOptionChain,
   searchScrip,
-}: ResolveOptionTradingSymbolParams): Promise<string> {
+}: ResolveOptionTradingSymbolParams): Promise<ResolvedOptionContract> {
   const resolvedExchange = exchange || getInstrument(instrument)?.exchange || "NFO";
   const expiryCode = expiryDate ? formatExpiryForSymbol(expiryDate) : null;
 
@@ -96,16 +131,24 @@ export async function resolveOptionTradingSymbol({
       ];
 
   let tradingSymbol = candidates[0];
+  let resolvedLotSize: number | undefined;
 
   // Helper: match a row from option chain / search results
   const matchRow = (row: any): boolean => {
-    const rowStrike = Number(row.strprc ?? row.strike ?? row.strike_price ?? row.dname?.match(/(\d+(?:\.\d+)?)/)?.[1]);
+    const rowStrike = Number(
+      row.strprc ??
+      row.strike ??
+      row.strike_price ??
+      parseStrikeFromText(row.dname) ??
+      parseStrikeFromText(row.tsym ?? row.tradingsymbol ?? row.token_tsym ?? row.symbol)
+    );
     const rowTsym = normalizeTradingSymbol(row.tsym ?? row.tradingsymbol ?? row.token_tsym ?? row.symbol);
     const rowType = normalizeOptionType(row.optt ?? row.option_type ?? row.instname ?? row.instrument);
     const strikeMatch = Number.isFinite(rowStrike) ? Math.abs(rowStrike - strike) < 0.01 : rowTsym.includes(String(strike));
     const typeMatch = rowType ? rowType === optionType : rowTsym.includes(optionType) || rowTsym.endsWith(`${ceSuffix}${strike}`) || rowTsym.includes(`${ceSuffix}${strike}`);
-    const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) : true;
-    return strikeMatch && typeMatch && expiryMatches && !!row.tsym;
+    const rowExpiry = normalizeExpiryDateText(row.exd ?? row.expiry ?? row.exp_date);
+    const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) || rowExpiry === expiryCode : true;
+    return strikeMatch && typeMatch && expiryMatches && !!pickTradingSymbol(row);
   };
 
   const pickTradingSymbol = (row: any): string | null => {
@@ -131,20 +174,26 @@ export async function resolveOptionTradingSymbol({
     const exact = values.find(matchRow);
     const exactSymbol = exact ? pickTradingSymbol(exact) : null;
     if (exactSymbol) {
+      resolvedLotSize = parseRowLotSize(exact);
       console.log(`[SymbolResolve] Matched from option chain: ${exactSymbol}`);
-      return exactSymbol;
+      return { tradingSymbol: exactSymbol, lotSize: resolvedLotSize };
     }
   } catch (e) {
     console.warn(`[SymbolResolve] Option chain failed for ${futuresSymbol}:`, e);
   }
 
   // 2. Try search with multiple queries (Shoonya SearchScrip uses partial text matching)
-  const searchQueries = [
+  const readableExpiry = expiryDate
+    ? expiryDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }).replace(/\s+/g, " ").toUpperCase()
+    : null;
+  const searchQueries = Array.from(new Set([
     ...candidates,
-    // Try shorter search text that Shoonya can partial-match
     expiryCode ? `${instrument}${expiryCode}${ceSuffix}` : `${instrument}${ceSuffix}${strike}`,
+    expiryCode ? `${instrument} ${expiryCode} ${optionType} ${strike}` : `${instrument} ${optionType} ${strike}`,
+    readableExpiry ? `${instrument} ${readableExpiry} ${optionType} ${strike}` : `${instrument} ${optionType} ${strike}`,
     `${instrument} ${strike} ${optionType}`,
-  ];
+    `${instrument} ${optionType} ${strike}`,
+  ]));
 
   for (const query of searchQueries) {
     try {
@@ -159,8 +208,9 @@ export async function resolveOptionTradingSymbol({
       const exactSymbol = exact ? pickTradingSymbol(exact) : null;
       if (exactSymbol) {
         tradingSymbol = exactSymbol;
+        resolvedLotSize = parseRowLotSize(exact);
         console.log(`[SymbolResolve] ✓ Matched: ${tradingSymbol} from query: ${query}`);
-        return tradingSymbol;
+        return { tradingSymbol, lotSize: resolvedLotSize };
       }
     } catch (e) {
       console.warn(`[SymbolResolve] Search failed for "${query}":`, e);
@@ -172,5 +222,10 @@ export async function resolveOptionTradingSymbol({
   }
 
   console.warn(`[SymbolResolve] No match found for ${instrument} ${optionType} ${strike}, using fallback: ${tradingSymbol}`);
-  return tradingSymbol;
+  return { tradingSymbol, lotSize: resolvedLotSize };
+}
+
+export async function resolveOptionTradingSymbol(params: ResolveOptionTradingSymbolParams): Promise<string> {
+  const contract = await resolveOptionContract(params);
+  return contract.tradingSymbol;
 }

@@ -138,26 +138,32 @@ export async function resolveOptionTradingSymbol({
     console.warn(`[SymbolResolve] Option chain failed for ${futuresSymbol}:`, e);
   }
 
-  // 2. Try search with multiple queries
+  // 2. Try search with multiple queries (Shoonya SearchScrip uses partial text matching)
   const searchQueries = [
     ...candidates,
+    // Try shorter search text that Shoonya can partial-match
+    expiryCode ? `${instrument}${expiryCode}${ceSuffix}` : `${instrument}${ceSuffix}${strike}`,
     `${instrument} ${strike} ${optionType}`,
-    `${instrument}${strike}${optionType}`,
   ];
 
   for (const query of searchQueries) {
     try {
+      console.log(`[SymbolResolve] Searching: "${query}" on ${resolvedExchange}`);
       const searchResult = await searchScrip(query, resolvedExchange);
       const values = extractValues(searchResult);
+      console.log(`[SymbolResolve] Search returned ${values.length} results for "${query}"`);
+      if (values.length > 0 && values.length <= 5) {
+        console.log(`[SymbolResolve] Results:`, values.map((v: any) => v.tsym).join(", "));
+      }
       const exact = values.find(matchRow);
       const exactSymbol = exact ? pickTradingSymbol(exact) : null;
       if (exactSymbol) {
         tradingSymbol = exactSymbol;
-        console.log(`[SymbolResolve] Matched: ${tradingSymbol} from query: ${query}`);
+        console.log(`[SymbolResolve] ✓ Matched: ${tradingSymbol} from query: ${query}`);
         return tradingSymbol;
       }
-    } catch {
-      // continue
+    } catch (e) {
+      console.warn(`[SymbolResolve] Search failed for "${query}":`, e);
     }
   }
 

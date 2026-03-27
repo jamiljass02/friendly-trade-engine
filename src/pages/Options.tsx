@@ -3,7 +3,7 @@ import AppLayout from "@/components/AppLayout";
 import OptionsChain from "@/components/OptionsChain";
 import StrategyExecutor from "@/components/StrategyExecutor";
 import PayoffChart from "@/components/PayoffChart";
-import { getInstrument } from "@/lib/instruments";
+import { getEffectiveLotSize, getInstrument } from "@/lib/instruments";
 
 export interface SelectedLeg {
   strike: number;
@@ -19,7 +19,8 @@ const Options = () => {
   const [expiryDate, setExpiryDate] = useState<Date | undefined>();
   const [liveSpot, setLiveSpot] = useState<number | null>(null);
   const inst = getInstrument(instrument);
-  const defaultLot = inst?.lotSize || 25;
+  const defaultLot = getEffectiveLotSize(instrument);
+  const [lotSize, setLotSize] = useState(defaultLot);
   const [qty, setQty] = useState(defaultLot);
 
   const handleStrikeSelect = useCallback(
@@ -48,8 +49,14 @@ const Options = () => {
   const handleInstrumentChange = useCallback((symbol: string) => {
     setInstrument(symbol);
     setSelectedLegs([]);
-    const newInst = getInstrument(symbol);
-    setQty(newInst?.lotSize || 25);
+    const newLot = getEffectiveLotSize(symbol);
+    setLotSize(newLot);
+    setQty(newLot);
+  }, []);
+
+  const handleLotSizeChange = useCallback((nextLotSize: number) => {
+    setLotSize(nextLotSize);
+    setQty((prev) => (prev % nextLotSize === 0 && prev > 0 ? prev : nextLotSize));
   }, []);
 
   const handleExpiryChange = useCallback((date: Date) => {
@@ -75,6 +82,7 @@ const Options = () => {
               onInstrumentChange={handleInstrumentChange}
               onExpiryChange={handleExpiryChange}
               onSpotPriceChange={setLiveSpot}
+              onLotSizeChange={handleLotSizeChange}
             />
             {selectedLegs.length > 0 && (
               <PayoffChart legs={selectedLegs} instrument={instrument} qty={qty} />
@@ -91,6 +99,7 @@ const Options = () => {
               qty={qty}
               onQtyChange={setQty}
               expiryDate={expiryDate}
+              lotSize={lotSize}
             />
           </div>
         </div>

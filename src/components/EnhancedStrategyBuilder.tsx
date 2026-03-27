@@ -21,13 +21,14 @@ import { monitorMoveToCost, type StopOrderWatch } from "@/lib/broker-stop-loss";
 import {
   INDEX_INSTRUMENTS,
   FNO_STOCKS,
+  getEffectiveLotSize,
   getInstrument,
   getDefaultSpotPrice,
   type Instrument,
 } from "@/lib/instruments";
 import { getUpcomingExpiries, type ExpiryDate } from "@/lib/expiry-utils";
 import { resolveStrikeFromSelection } from "@/lib/option-strikes";
-import { buildPaperOptionSymbol, resolveBuilderExpiryDate, resolveOptionTradingSymbol } from "@/lib/strategy-order-utils";
+import { buildPaperOptionSymbol, resolveBuilderExpiryDate, resolveOptionContract } from "@/lib/strategy-order-utils";
 import { upsertRunningStrategy } from "@/lib/strategy-runtime";
 import { useIndexPrices } from "@/hooks/useIndexPrices";
 import PayoffChart from "./PayoffChart";
@@ -151,7 +152,7 @@ const EnhancedStrategyBuilder = () => {
 
   const primaryInstrument = legs[0]?.underlying || "NIFTY";
   const primaryInst = getInstrument(primaryInstrument);
-  const primaryLotSize = primaryInst?.lotSize || 25;
+  const primaryLotSize = getEffectiveLotSize(primaryInstrument);
 
   /** Get live spot price from broker feed, fall back to hardcoded default */
   const getLiveSpot = useCallback((symbol: string): number => {
@@ -322,7 +323,7 @@ const EnhancedStrategyBuilder = () => {
       if (!leg.instrumentType.includes("option") || !leg.strike) continue;
       const spot = getLiveSpot(leg.underlying);
       const inst = getInstrument(leg.underlying);
-      const lotSize = inst?.lotSize || 25;
+      const lotSize = getEffectiveLotSize(leg.underlying);
       const iv = 15 + Math.random() * 5; // Mock IV
       const greeks = calcGreeks(
         spot,
@@ -354,7 +355,7 @@ const EnhancedStrategyBuilder = () => {
 
     for (const leg of legs) {
       const inst = getInstrument(leg.underlying);
-      const lotSize = inst?.lotSize || 25;
+      const lotSize = getEffectiveLotSize(leg.underlying);
       const spot = getLiveSpot(leg.underlying);
       const totalQty = leg.lots * lotSize;
 
@@ -451,7 +452,7 @@ const EnhancedStrategyBuilder = () => {
 
       for (const leg of legs) {
         const inst = getInstrument(leg.underlying);
-        const lotSize = inst?.lotSize || 25;
+        let lotSize = getEffectiveLotSize(leg.underlying);
         const exchange = inst?.exchange || "NFO";
         const tickSize = inst?.tickSize || 0.05;
         const expiryDate = resolveBuilderExpiryDate(leg.expiry, leg.underlying);
@@ -499,7 +500,7 @@ const EnhancedStrategyBuilder = () => {
             continue;
           }
 
-          const tsym = await resolveOptionTradingSymbol({
+          const contract = await resolveOptionContract({
             instrument: leg.underlying,
             optionType: leg.optionType,
             strike: Number(leg.strike),
@@ -509,6 +510,8 @@ const EnhancedStrategyBuilder = () => {
             getOptionChain,
             searchScrip,
           });
+          const tsym = contract.tradingSymbol;
+          lotSize = getEffectiveLotSize(leg.underlying, contract.lotSize);
 
           if (!tsym) {
             throw new Error(`Unable to resolve trading symbol for ${leg.underlying} ${leg.optionType} ${leg.strike}.`);
@@ -915,7 +918,7 @@ const EnhancedStrategyBuilder = () => {
           ) : (
             legs.map((leg, i) => {
               const inst = getInstrument(leg.underlying);
-              const lotSize = inst?.lotSize || 25;
+              const lotSize = getEffectiveLotSize(leg.underlying);
               const spot = getLiveSpot(leg.underlying);
               const step = inst?.strikeStep || 50;
               const isFuture = leg.instrumentType.includes("future");

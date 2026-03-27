@@ -4,7 +4,7 @@ import { useBroker } from "@/hooks/useBroker";
 import { CheckSquare, Star, Search, X, TrendingUp, BarChart3, Activity, Wifi, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ExpirySelector from "./ExpirySelector";
-import { getInstrument, getDefaultSpotPrice, INDEX_INSTRUMENTS, FNO_STOCKS, type Instrument } from "@/lib/instruments";
+import { getInstrument, getDefaultSpotPrice, INDEX_INSTRUMENTS, FNO_STOCKS, parseBrokerLotSize, type Instrument } from "@/lib/instruments";
 import { getUpcomingExpiries, getDaysToExpiry, type ExpiryDate } from "@/lib/expiry-utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -76,9 +76,10 @@ interface OptionsChainProps {
   onInstrumentChange?: (symbol: string) => void;
   onExpiryChange?: (expiryDate: Date) => void;
   onSpotPriceChange?: (spot: number) => void;
+  onLotSizeChange?: (lotSize: number) => void;
 }
 
-const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange, onExpiryChange, onSpotPriceChange }: OptionsChainProps) => {
+const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange, onExpiryChange, onSpotPriceChange, onLotSizeChange }: OptionsChainProps) => {
   const { isConnected, getOptionChain, getMarketData } = useBroker();
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY");
   const [chainTab, setChainTab] = useState<"index" | "stock">("index");
@@ -163,6 +164,10 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
 
       if (chainResult && Array.isArray(chainResult.values || chainResult)) {
         const values = chainResult.values || chainResult;
+        const brokerLotSize = values
+          .map((item: any) => parseBrokerLotSize(item?.ls ?? item?.lotsize))
+          .find((value: number | null): value is number => Number.isFinite(value));
+        if (brokerLotSize) onLotSizeChange?.(brokerLotSize);
         const rowMap = new Map<number, Partial<OptionRow>>();
 
         for (const item of values) {
@@ -222,7 +227,7 @@ const OptionsChain = ({ onStrikeSelect, selectedStrikes = [], onInstrumentChange
       console.error("Live chain fetch error:", err.message);
       setIsLive(false);
     }
-  }, [isConnected, instrument, selectedSymbol, selectedExpiryObj, strikeStep, daysToExpiry, liveSpot, getOptionChain, getMarketData, onSpotPriceChange]);
+  }, [isConnected, instrument, selectedSymbol, selectedExpiryObj, strikeStep, daysToExpiry, liveSpot, getOptionChain, getMarketData, onSpotPriceChange, onLotSizeChange]);
 
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);

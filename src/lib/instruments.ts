@@ -27,6 +27,15 @@ export interface StockInstrument {
 
 export type Instrument = IndexInstrument | StockInstrument;
 
+export function parseBrokerLotSize(value: unknown): number | null {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function getEffectiveLotSize(symbol: string, brokerLotSize?: unknown): number {
+  return parseBrokerLotSize(brokerLotSize) ?? getInstrument(symbol)?.lotSize ?? 25;
+}
+
 // All F&O eligible indices
 export const INDEX_INSTRUMENTS: IndexInstrument[] = [
   {
@@ -34,7 +43,7 @@ export const INDEX_INSTRUMENTS: IndexInstrument[] = [
     name: "Nifty 50",
     exchange: "NFO",
     spotToken: "26000",
-    lotSize: 75,
+    lotSize: 65,
     tickSize: 0.05,
     strikeStep: 50,
     weeklyExpiry: true,

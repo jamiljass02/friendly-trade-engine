@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import { useBroker } from "@/hooks/useBroker";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getInstrument, getDefaultSpotPrice } from "@/lib/instruments";
-import { resolveOptionTradingSymbol } from "@/lib/strategy-order-utils";
+import { getEffectiveLotSize, getInstrument, getDefaultSpotPrice } from "@/lib/instruments";
+import { resolveOptionContract } from "@/lib/strategy-order-utils";
 import {
   getBrokerOrderId,
   getOrderFillPrice,
@@ -35,6 +35,7 @@ interface StrategyExecutorProps {
   qty?: number;
   onQtyChange?: (qty: number) => void;
   expiryDate?: Date;
+  lotSize?: number;
 }
 
 interface StopOrderWatch {
@@ -54,11 +55,12 @@ const StrategyExecutor = ({
   qty: externalQty,
   onQtyChange,
   expiryDate,
+  lotSize: providedLotSize,
 }: StrategyExecutorProps) => {
   const { isConnected, placeOrder, searchScrip, getOptionChain, getOrders, modifyOrder } = useBroker();
   const { toast } = useToast();
   const inst = getInstrument(instrument);
-  const defaultLot = inst?.lotSize || 25;
+  const defaultLot = providedLotSize || getEffectiveLotSize(instrument);
   const tickSize = inst?.tickSize || 0.05;
   const [internalQty, setInternalQty] = useState(defaultLot);
   const qty = externalQty ?? internalQty;
@@ -107,7 +109,7 @@ const StrategyExecutor = ({
 
   const resolveTradingSymbol = useCallback(async (leg: SelectedLeg) => {
     if (leg.tradingSymbol) return leg.tradingSymbol;
-    return resolveOptionTradingSymbol({
+    const contract = await resolveOptionContract({
       instrument,
       optionType: leg.type,
       strike: leg.strike,
@@ -117,6 +119,7 @@ const StrategyExecutor = ({
       getOptionChain,
       searchScrip,
     });
+    return contract.tradingSymbol;
   }, [expiryDate, getOptionChain, instrument, searchScrip, inst?.exchange]);
 
   const monitorMoveToCost = useCallback(async (watchList: StopOrderWatch[]) => {

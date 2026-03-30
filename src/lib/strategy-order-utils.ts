@@ -1,4 +1,5 @@
 import { formatExpiryForSymbol, getUpcomingExpiries } from "@/lib/expiry-utils";
+import { extractBrokerValues, parseBrokerExpiryDate } from "@/lib/broker-expiry-utils";
 import { getInstrument } from "@/lib/instruments";
 
 interface ResolveOptionTradingSymbolParams {
@@ -15,12 +16,17 @@ interface ResolveOptionTradingSymbolParams {
 export interface ResolvedOptionContract {
   tradingSymbol: string;
   lotSize?: number;
+  expiryDate?: Date;
 }
 
-export function resolveBuilderExpiryDate(expiryLabel: string, instrument: string): Date | undefined {
+export function resolveBuilderExpiryDate(
+  expiryLabel: string,
+  instrument: string,
+  availableExpiries?: Array<{ label: string; date: Date }>
+): Date | undefined {
   const inst = getInstrument(instrument);
   const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-  const expiries = getUpcomingExpiries(isWeekly, 12, instrument);
+  const expiries = availableExpiries?.length ? availableExpiries : getUpcomingExpiries(isWeekly, 12, instrument);
   return expiries.find((expiry) => expiry.label === expiryLabel)?.date ?? expiries[0]?.date;
 }
 
@@ -89,11 +95,8 @@ function parseRowLotSize(row: any): number | undefined {
 }
 
 function normalizeExpiryDateText(value: unknown): string | null {
-  const text = String(value ?? "").trim();
-  if (!text) return null;
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return formatExpiryForSymbol(parsed);
+  const parsed = parseBrokerExpiryDate(value);
+  return parsed ? formatExpiryForSymbol(parsed) : null;
 }
 
 export async function resolveOptionContract({
@@ -117,6 +120,7 @@ export async function resolveOptionContract({
   };
 
   const normalizeTradingSymbol = (value: unknown) => String(value ?? "").trim().toUpperCase();
+  const fallbackContracts = new Map<string, ResolvedOptionContract>();
 
   // Build multiple candidate symbols to try (Shoonya format: NIFTY31MAR26C24250)
   const ceSuffix = optionType === "CE" ? "C" : "P";
@@ -134,7 +138,7 @@ export async function resolveOptionContract({
   let resolvedLotSize: number | undefined;
 
   // Helper: match a row from option chain / search results
-  const matchRow = (row: any): boolean => {
+  const matchRow = (row: any, requireExpiryMatch: boolean = true): ResolvedOptionContract | null => {
     const rowStrike = Number(
       row.strprc ??
       row.strike ??
@@ -146,9 +150,19 @@ export async function resolveOptionContract({
     const rowType = normalizeOptionType(row.optt ?? row.option_type ?? row.instname ?? row.instrument);
     const strikeMatch = Number.isFinite(rowStrike) ? Math.abs(rowStrike - strike) < 0.01 : rowTsym.includes(String(strike));
     const typeMatch = rowType ? rowType === optionType : rowTsym.includes(optionType) || rowTsym.endsWith(`${ceSuffix}${strike}`) || rowTsym.includes(`${ceSuffix}${strike}`);
-    const rowExpiry = normalizeExpiryDateText(row.exd ?? row.expiry ?? row.exp_date);
+    const rowExpiryDate = parseBrokerExpiryDate(row.exd ?? row.expiry ?? row.exp_date ?? rowTsym) ?? expiryDate;
+    const rowExpiry = rowExpiryDate ? formatExpiryForSymbol(rowExpiryDate) : normalizeExpiryDateText(row.exd ?? row.expiry ?? row.exp_date);
     const expiryMatches = expiryCode ? rowTsym.includes(expiryCode) || rowExpiry === expiryCode : true;
-    return strikeMatch && typeMatch && expiryMatches && !!pickTradingSymbol(row);
+    if (!strikeMatch || !typeMatch || (requireExpiryMatch && !expiryMatches)) return null;
+
+    const tradingSymbolValue = pickTradingSymbol(row);
+    if (!tradingSymbolValue) return null;
+
+    return {
+      tradingSymbol: tradingSymbolValue,
+      lotSize: parseRowLotSize(row),
+      expiryDate: rowExpiryDate,
+    };
   };
 
   const pickTradingSymbol = (row: any): string | null => {
@@ -157,26 +171,33 @@ export async function resolveOptionContract({
     return value ? value : null;
   };
 
-  const extractValues = (result: any): any[] =>
-    Array.isArray((result as any)?.values) ? (result as any).values
-      : Array.isArray(result) ? result : [];
+  const rememberFallback = (contract: ResolvedOptionContract | null) => {
+    if (contract?.tradingSymbol && !fallbackContracts.has(contract.tradingSymbol)) {
+      fallbackContracts.set(contract.tradingSymbol, contract);
+    }
+  };
 
   // 1. Try option chain first — Shoonya requires futures symbol as tsym (e.g. NIFTY31MAR26F)
   const futuresSymbol = expiryCode ? `${instrument}${expiryCode}F` : instrument;
   try {
     console.log(`[SymbolResolve] Trying option chain with futuresSymbol=${futuresSymbol}, strike=${strike}`);
     const chainResult = await getOptionChain(futuresSymbol, strike, 12, resolvedExchange);
-    const values = extractValues(chainResult);
+    const values = extractBrokerValues(chainResult);
     console.log(`[SymbolResolve] Option chain returned ${values.length} rows`);
     if (values.length > 0) {
       console.log(`[SymbolResolve] Sample row tsym: ${values[0]?.tsym}, optt: ${values[0]?.optt}, strprc: ${values[0]?.strprc}`);
     }
-    const exact = values.find(matchRow);
-    const exactSymbol = exact ? pickTradingSymbol(exact) : null;
-    if (exactSymbol) {
-      resolvedLotSize = parseRowLotSize(exact);
-      console.log(`[SymbolResolve] Matched from option chain: ${exactSymbol}`);
-      return { tradingSymbol: exactSymbol, lotSize: resolvedLotSize };
+    for (const row of values) {
+      const exact = matchRow(row, true);
+      if (exact) {
+        resolvedLotSize = exact.lotSize;
+        console.log(`[SymbolResolve] Matched from option chain: ${exact.tradingSymbol}`);
+        return exact;
+      }
+
+      if (expiryCode) {
+        rememberFallback(matchRow(row, false));
+      }
     }
   } catch (e) {
     console.warn(`[SymbolResolve] Option chain failed for ${futuresSymbol}:`, e);
@@ -199,22 +220,37 @@ export async function resolveOptionContract({
     try {
       console.log(`[SymbolResolve] Searching: "${query}" on ${resolvedExchange}`);
       const searchResult = await searchScrip(query, resolvedExchange);
-      const values = extractValues(searchResult);
+      const values = extractBrokerValues(searchResult);
       console.log(`[SymbolResolve] Search returned ${values.length} results for "${query}"`);
       if (values.length > 0 && values.length <= 5) {
         console.log(`[SymbolResolve] Results:`, values.map((v: any) => v.tsym).join(", "));
       }
-      const exact = values.find(matchRow);
-      const exactSymbol = exact ? pickTradingSymbol(exact) : null;
-      if (exactSymbol) {
-        tradingSymbol = exactSymbol;
-        resolvedLotSize = parseRowLotSize(exact);
-        console.log(`[SymbolResolve] ✓ Matched: ${tradingSymbol} from query: ${query}`);
-        return { tradingSymbol, lotSize: resolvedLotSize };
+      for (const row of values) {
+        const exact = matchRow(row, true);
+        if (exact) {
+          tradingSymbol = exact.tradingSymbol;
+          resolvedLotSize = exact.lotSize;
+          console.log(`[SymbolResolve] ✓ Matched: ${tradingSymbol} from query: ${query}`);
+          return exact;
+        }
+
+        if (expiryCode) {
+          rememberFallback(matchRow(row, false));
+        }
       }
     } catch (e) {
       console.warn(`[SymbolResolve] Search failed for "${query}":`, e);
     }
+  }
+
+  const brokerFallback = Array.from(fallbackContracts.values())
+    .sort((a, b) => (a.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER))[0];
+
+  if (brokerFallback) {
+    console.warn(
+      `[SymbolResolve] Expiry adjusted by broker for ${instrument}: requested=${expiryCode ?? "auto"}, resolved=${brokerFallback.expiryDate ? formatExpiryForSymbol(brokerFallback.expiryDate) : "unknown"}`
+    );
+    return brokerFallback;
   }
 
   if (strict) {

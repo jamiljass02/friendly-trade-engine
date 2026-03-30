@@ -219,7 +219,7 @@ const EnhancedStrategyBuilder = () => {
       const resolved = await Promise.all(
         missingUnderlyings.map(async (underlying) => {
           const inst = getInstrument(underlying);
-          if (!inst) return [underlying, []] as const;
+          if (!inst) return [underlying, [] as BrokerResolvedExpiry[]] as const;
 
           try {
             const expiries = await fetchBrokerOptionExpiries({
@@ -230,7 +230,7 @@ const EnhancedStrategyBuilder = () => {
             return [underlying, expiries] as const;
           } catch (error) {
             console.warn(`[StrategyBuilder] Failed to load broker expiries for ${underlying}`, error);
-            return [underlying, []] as const;
+            return [underlying, [] as BrokerResolvedExpiry[]] as const;
           }
         })
       );

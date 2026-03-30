@@ -11,6 +11,26 @@ const INSTRUMENT_EXPIRY_WEEKDAY: Record<string, number> = {
   NIFTY: 2, // Tuesday
   SENSEX: 4, // Thursday
 };
+const MARKET_HOLIDAYS = new Set([
+  "2026-03-26", // Ram Navami
+  "2026-03-31", // Mahavir Jayanti
+]);
+
+function toDateKey(date: Date): string {
+  return format(date, "yyyy-MM-dd");
+}
+
+function isMarketHoliday(date: Date): boolean {
+  return MARKET_HOLIDAYS.has(toDateKey(date));
+}
+
+function adjustForHoliday(date: Date): Date {
+  let adjusted = startOfDay(date);
+  while (getDay(adjusted) === 0 || getDay(adjusted) === 6 || isMarketHoliday(adjusted)) {
+    adjusted = startOfDay(addDays(adjusted, -1));
+  }
+  return adjusted;
+}
 
 function getExpiryWeekday(instrumentSymbol?: string): number {
   if (!instrumentSymbol) return DEFAULT_EXPIRY_WEEKDAY;
@@ -35,7 +55,7 @@ function getWeekdaysInMonth(year: number, month: number, weekday: number): Date[
 
 function getLastExpiryWeekday(year: number, month: number, instrumentSymbol?: string): Date {
   const weekdayMatches = getWeekdaysInMonth(year, month, getExpiryWeekday(instrumentSymbol));
-  return weekdayMatches[weekdayMatches.length - 1];
+  return adjustForHoliday(weekdayMatches[weekdayMatches.length - 1]);
 }
 
 export interface ExpiryDate {
@@ -65,14 +85,20 @@ export function getUpcomingExpiries(weeklyExpiry: boolean, count: number = 12, i
     let current = today;
     while (expiries.length < count) {
       if (getDay(current) === expiryWeekday) {
-        const monthlyExpiry = getLastExpiryWeekday(current.getFullYear(), current.getMonth(), instrumentSymbol);
-        const isMonthly = current.getTime() === monthlyExpiry.getTime();
+        const adjustedCurrent = adjustForHoliday(current);
+        if (adjustedCurrent.getTime() !== current.getTime()) {
+          current = addDays(current, 1);
+          continue;
+        }
 
-        if (!isBefore(current, today)) {
+        const monthlyExpiry = getLastExpiryWeekday(current.getFullYear(), current.getMonth(), instrumentSymbol);
+        const isMonthly = adjustedCurrent.getTime() === monthlyExpiry.getTime();
+
+        if (!isBefore(adjustedCurrent, today)) {
           expiries.push({
-            date: current,
-            label: format(current, "d MMM"),
-            fullLabel: format(current, "d MMM yyyy"),
+            date: adjustedCurrent,
+            label: format(adjustedCurrent, "d MMM"),
+            fullLabel: format(adjustedCurrent, "d MMM yyyy"),
             isWeekly: !isMonthly,
             isMonthly,
             isCurrent: false,

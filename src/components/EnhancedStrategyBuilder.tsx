@@ -29,6 +29,7 @@ import {
 import { getUpcomingExpiries, type ExpiryDate } from "@/lib/expiry-utils";
 import { resolveStrikeFromSelection } from "@/lib/option-strikes";
 import { buildPaperOptionSymbol, resolveBuilderExpiryDate, resolveOptionContract } from "@/lib/strategy-order-utils";
+import { fetchBrokerOptionExpiries, type BrokerResolvedExpiry } from "@/lib/broker-expiry-utils";
 import { upsertRunningStrategy } from "@/lib/strategy-runtime";
 import { useIndexPrices } from "@/hooks/useIndexPrices";
 import PayoffChart from "./PayoffChart";
@@ -135,6 +136,7 @@ const EnhancedStrategyBuilder = () => {
   const [sectorFilter, setSectorFilter] = useState<string>("all");
   const [expiryWeekFilter, setExpiryWeekFilter] = useState<string>("all");
   const [savedStrategies, setSavedStrategies] = useState<SavedStrategy[]>([]);
+  const [brokerExpiriesByUnderlying, setBrokerExpiriesByUnderlying] = useState<Record<string, BrokerResolvedExpiry[]>>({});
 
   // For payoff chart, derive simplified legs
   const payoffLegs = useMemo(
@@ -160,6 +162,16 @@ const EnhancedStrategyBuilder = () => {
     if (live && live.price > 0) return live.price;
     return getDefaultSpotPrice(symbol);
   }, [indexPrices]);
+
+  const getStaticExpiries = useCallback((underlying: string): ExpiryDate[] => {
+    const inst = getInstrument(underlying);
+    const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
+    return getUpcomingExpiries(isWeekly, 4, underlying);
+  }, []);
+
+  const getExpiryOptions = useCallback((underlying: string): ExpiryDate[] => {
+    return brokerExpiriesByUnderlying[underlying]?.length ? brokerExpiriesByUnderlying[underlying] : getStaticExpiries(underlying);
+  }, [brokerExpiriesByUnderlying, getStaticExpiries]);
 
   const filteredStocks = useMemo(() => {
     let stocks = FNO_STOCKS;
@@ -187,10 +199,75 @@ const EnhancedStrategyBuilder = () => {
     }
   }, []);
 
+  const trackedUnderlyings = useMemo(
+    () => Array.from(new Set((legs.length > 0 ? legs.map((leg) => leg.underlying) : ["NIFTY"]))).sort(),
+    [legs]
+  );
+
+  useEffect(() => {
+    if (!isConnected) {
+      setBrokerExpiriesByUnderlying({});
+      return;
+    }
+
+    const missingUnderlyings = trackedUnderlyings.filter((underlying) => !brokerExpiriesByUnderlying[underlying]);
+    if (missingUnderlyings.length === 0) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const resolved = await Promise.all(
+        missingUnderlyings.map(async (underlying) => {
+          const inst = getInstrument(underlying);
+          if (!inst) return [underlying, []] as const;
+
+          try {
+            const expiries = await fetchBrokerOptionExpiries({
+              instrument: underlying,
+              exchange: inst.exchange || "NFO",
+              searchScrip,
+            });
+            return [underlying, expiries] as const;
+          } catch (error) {
+            console.warn(`[StrategyBuilder] Failed to load broker expiries for ${underlying}`, error);
+            return [underlying, []] as const;
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      setBrokerExpiriesByUnderlying((prev) => {
+        const next = { ...prev };
+        for (const [underlying, expiries] of resolved) {
+          if (expiries.length > 0) next[underlying] = expiries;
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnected, trackedUnderlyings, brokerExpiriesByUnderlying, searchScrip]);
+
+  useEffect(() => {
+    if (Object.keys(brokerExpiriesByUnderlying).length === 0) return;
+
+    setLegs((prev) => prev.map((leg) => {
+      if (leg.instrumentType.includes("future")) return leg;
+
+      const expiries = brokerExpiriesByUnderlying[leg.underlying];
+      if (!expiries?.length) return leg;
+      if (expiries.some((expiry) => expiry.label === leg.expiry)) return leg;
+
+      return { ...leg, expiry: expiries[0].label };
+    }));
+  }, [brokerExpiriesByUnderlying]);
+
   const availableExpiries = useMemo(() => {
-    const expiries = getUpcomingExpiries(true, 8, "NIFTY");
-    return expiries.map((e) => e.label);
-  }, []);
+    return getExpiryOptions("NIFTY").map((e) => e.label);
+  }, [getExpiryOptions]);
 
   const addLeg = useCallback(
     (underlying?: string, type?: "index_option" | "stock_option" | "index_future" | "stock_future") => {
@@ -202,8 +279,7 @@ const EnhancedStrategyBuilder = () => {
       const inst = getInstrument(resolvedUnderlying);
       const spot = getLiveSpot(resolvedUnderlying);
       const step = inst?.strikeStep || 50;
-      const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-      const expiries = getUpcomingExpiries(isWeekly, 4, resolvedUnderlying);
+      const expiries = getExpiryOptions(resolvedUnderlying);
       const atmStrike = Math.round(spot / step) * step;
       const isFuture = resolvedType.includes("future");
       const mockLTP = isFuture ? spot : 50 + Math.random() * 100;
@@ -227,7 +303,7 @@ const EnhancedStrategyBuilder = () => {
       };
       setLegs((prev) => [...prev, newLeg]);
     },
-    [legs, globalProduct]
+    [getExpiryOptions, getLiveSpot, globalProduct, legs]
   );
 
   const removeLeg = useCallback((id: string) => {
@@ -455,7 +531,7 @@ const EnhancedStrategyBuilder = () => {
         let lotSize = getEffectiveLotSize(leg.underlying);
         const exchange = inst?.exchange || "NFO";
         const tickSize = inst?.tickSize || 0.05;
-        const expiryDate = resolveBuilderExpiryDate(leg.expiry, leg.underlying);
+        const expiryDate = resolveBuilderExpiryDate(leg.expiry, leg.underlying, getExpiryOptions(leg.underlying));
 
         if (leg.instrumentType.includes("option")) {
           if (!leg.strike || !leg.optionType) {
@@ -575,7 +651,7 @@ const EnhancedStrategyBuilder = () => {
             quantity: leg.lots * lotSize,
             price: entryPrice,
             strike: leg.strike,
-            expiry: expiryDate?.toISOString(),
+            expiry: contract.expiryDate?.toISOString() ?? expiryDate?.toISOString(),
           });
         }
       }
@@ -621,7 +697,7 @@ const EnhancedStrategyBuilder = () => {
     } finally {
       setExecuting(false);
     }
-  }, [legs, isConnected, paper, placeOrder, getOptionChain, searchScrip, getOrders, modifyOrder, toast, strategyName, detectedStrategy, primaryInstrument, globalProduct]);
+  }, [legs, isConnected, paper, placeOrder, getOptionChain, searchScrip, getOrders, modifyOrder, toast, strategyName, detectedStrategy, primaryInstrument, globalProduct, getExpiryOptions]);
 
   return (
     <div className="space-y-6">
@@ -922,8 +998,7 @@ const EnhancedStrategyBuilder = () => {
               const spot = getLiveSpot(leg.underlying);
               const step = inst?.strikeStep || 50;
               const isFuture = leg.instrumentType.includes("future");
-              const isWeekly = inst?.type === "index" ? (inst as any).weeklyExpiry : false;
-              const expiries = getUpcomingExpiries(isWeekly, 4, leg.underlying);
+              const expiries = getExpiryOptions(leg.underlying);
 
               // For CE: OTM (higher strikes) first, then ATM, then ITM
               // For PE: ITM (higher strikes) first, then ATM, then OTM  

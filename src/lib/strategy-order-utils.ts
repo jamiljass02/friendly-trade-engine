@@ -210,10 +210,13 @@ export async function resolveOptionContract({
   const searchQueries = Array.from(new Set([
     ...candidates,
     expiryCode ? `${instrument}${expiryCode}${ceSuffix}` : `${instrument}${ceSuffix}${strike}`,
+    expiryCode ? `${instrument}${expiryCode}` : instrument,
     expiryCode ? `${instrument} ${expiryCode} ${optionType} ${strike}` : `${instrument} ${optionType} ${strike}`,
     readableExpiry ? `${instrument} ${readableExpiry} ${optionType} ${strike}` : `${instrument} ${optionType} ${strike}`,
     `${instrument} ${strike} ${optionType}`,
     `${instrument} ${optionType} ${strike}`,
+    `${instrument} ${ceSuffix}${strike}`,
+    `${instrument}${ceSuffix}${strike}`,
   ]));
 
   for (const query of searchQueries) {

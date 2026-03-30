@@ -189,6 +189,8 @@ export async function fetchBrokerOptionExpiries(params: {
     `${instrument} CE`,
     `${instrument} PE`,
     `${instrument} OPT`,
+    `${instrument} C`,
+    `${instrument} P`,
   ]));
 
   const rows: any[] = [];

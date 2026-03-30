@@ -241,7 +241,7 @@ const AlgoExecutionDaemon = () => {
                 quantity,
                 price: fillPrice || 0,
                 strike,
-                expiry: expiryDate?.toISOString(),
+                expiry: contract.expiryDate?.toISOString() ?? expiryDate?.toISOString(),
               });
 
               toast.success(`Algo: ${leg.side} ${tradingSymbol} placed`, {

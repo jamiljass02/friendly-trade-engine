@@ -1,21 +1,20 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { LogIn } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-
-const SHOONYA_OAUTH_API_KEY = import.meta.env.VITE_SHOONYA_OAUTH_API_KEY as string | undefined;
-const AUTHORIZE_BASE = "https://trade.shoonya.com/OAuthlogin/authorize/oauth";
+import { brokerFetch } from "@/lib/broker-api";
 
 const BrokerLogin = () => {
   const { user, isLoading: authLoading } = useAuth();
   const { isLoggedIn, isLoading } = useShoonyaSession();
   const { toast } = useToast();
   const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "");
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -39,7 +38,7 @@ const BrokerLogin = () => {
   if (!user) return <Navigate to="/auth" replace />;
   if (isLoggedIn) return <Navigate to="/" replace />;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUid = uid.trim().toUpperCase();
     if (!/^[A-Z]{1,3}\d{3,8}$/.test(cleanUid)) {
@@ -51,19 +50,26 @@ const BrokerLogin = () => {
       return;
     }
 
+    setRedirecting(true);
     localStorage.setItem("shoonya_pending_uid", cleanUid);
-
     const state = crypto.randomUUID();
     sessionStorage.setItem("shoonya_oauth_state", state);
-
     const redirectUri = `${window.location.origin}/broker-callback`;
-    const url = new URL(AUTHORIZE_BASE);
-    if (SHOONYA_OAUTH_API_KEY) url.searchParams.set("api_key", SHOONYA_OAUTH_API_KEY);
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("state", state);
-    url.searchParams.set("uid", cleanUid);
 
-    window.location.href = url.toString();
+    try {
+      const { ok, data } = await brokerFetch(
+        { uid: cleanUid, state, redirect_uri: redirectUri },
+        { functionName: "shoonya-oauth-url" },
+      );
+      if (!ok || !data.authorize_url) {
+        throw new Error(data.error || "Could not build Shoonya login URL.");
+      }
+      window.location.href = data.authorize_url;
+    } catch (err) {
+      setRedirecting(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Login failed", description: msg, variant: "destructive" });
+    }
   };
 
   return (

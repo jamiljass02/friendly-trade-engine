@@ -99,9 +99,9 @@ const BrokerLogin = () => {
             </p>
           </div>
 
-          <Button type="submit" className="w-full">
-            <LogIn className="w-4 h-4 mr-2" />
-            Login with Shoonya
+          <Button type="submit" className="w-full" disabled={redirecting}>
+            {redirecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
+            {redirecting ? "Redirecting to Shoonya..." : "Login with Shoonya"}
           </Button>
 
           <p className="text-[10px] text-muted-foreground text-center pt-2">

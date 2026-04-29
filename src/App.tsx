@@ -23,6 +23,7 @@ import Orders from "./pages/Orders";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import BrokerLogin from "./pages/BrokerLogin";
+import BrokerCallback from "./pages/BrokerCallback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -92,6 +93,7 @@ const App = () => (
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/broker-login" element={<BrokerLogin />} />
+          <Route path="/broker-callback" element={<BrokerCallback />} />
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/strategies" element={<ProtectedRoute><Strategies /></ProtectedRoute>} />
           <Route path="/algo" element={<ProtectedRoute><RouteErrorBoundary><Algo /></RouteErrorBoundary></ProtectedRoute>} />

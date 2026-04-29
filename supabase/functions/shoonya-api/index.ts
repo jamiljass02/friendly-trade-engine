@@ -4,13 +4,53 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const SHOONYA_BASE = "https://api.shoonya.com/NorenWClientTP";
+const PROXY_URL = (Deno.env.get("SHOONYA_PROXY_URL") || "").replace(/\/+$/, "");
 
-async function sha256(message: string): Promise<string> {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+const isGatewayHtml = (text: string) =>
+  /502\s+Bad\s+Gateway|503\s+Service\s+Temporarily\s+Unavailable|<html/i.test(text);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function callProxy(endpoint: string, payload: Record<string, unknown>, jKey?: string) {
+  if (!PROXY_URL) {
+    return { stat: "Not_Ok", emsg: "SHOONYA_PROXY_URL is not configured." };
+  }
+
+  const body = JSON.stringify({ endpoint, payload, jKey: jKey ?? null });
+  let last: any = { stat: "Not_Ok", emsg: "Proxy unreachable" };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${PROXY_URL}/shoonya`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        if ((isGatewayHtml(text) || res.status >= 500) && attempt < 3) {
+          await sleep(350 * attempt);
+          continue;
+        }
+        last = {
+          stat: "Not_Ok",
+          emsg: isGatewayHtml(text) || res.status >= 500
+            ? `Broker server is temporarily unavailable (${res.status || 502}). Please retry in a moment.`
+            : "Broker server returned an invalid response.",
+        };
+        return last;
+      }
+    } catch (err) {
+      console.error(`Proxy ${endpoint} attempt ${attempt} failed:`, err);
+      if (attempt < 3) {
+        await sleep(350 * attempt);
+        continue;
+      }
+      last = { stat: "Not_Ok", emsg: "Unable to reach broker proxy. Check connection and retry." };
+    }
+  }
+  return last;
 }
 
 Deno.serve(async (req) => {
@@ -21,149 +61,19 @@ Deno.serve(async (req) => {
   try {
     const { action, ...params } = await req.json();
 
-    // Direct login - no auth required
-    if (action === "direct_login") {
-      const { user_code, password, totp, api_key, vendor_code, imei } = params;
-
-      if (!user_code || !password || !api_key) {
-        return new Response(JSON.stringify({ error: "Missing required credentials" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const passwordHash = await sha256(password);
-      const appKey = await sha256(`${user_code}|${api_key}`);
-      const vcCandidates = vendor_code
-        ? [String(vendor_code).trim()]
-        : [String(user_code).trim(), `${String(user_code).trim()}_U`, "NA"];
-
-      let loginData: any = null;
-      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-      const isGatewayHtml = (text: string) => /502\s+Bad\s+Gateway|503\s+Service\s+Temporarily\s+Unavailable|<html/i.test(text);
-
-      const attemptLogin = async (vc: string) => {
-        const loginPayload = {
-          source: "API",
-          apkversion: "1.0.0",
-          uid: user_code,
-          pwd: passwordHash,
-          factor2: String(totp ?? "").trim(),
-          vc,
-          appkey: appKey,
-          imei: imei || "tradex-app",
-        };
-
-        let lastResult: any = { stat: "Not_Ok", emsg: "Login failed" };
-
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            const loginRes = await fetch(`${SHOONYA_BASE}/QuickAuth`, {
-              method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: "jData=" + JSON.stringify(loginPayload),
-            });
-
-            const loginText = await loginRes.text();
-
-            try {
-              lastResult = JSON.parse(loginText);
-            } catch {
-              console.error("Non-JSON login response:", loginText.slice(0, 300));
-              if ((isGatewayHtml(loginText) || loginRes.status >= 500) && attempt < 3) {
-                await sleep(350 * attempt);
-                continue;
-              }
-
-              lastResult = {
-                stat: "Not_Ok",
-                emsg: isGatewayHtml(loginText) || loginRes.status >= 500
-                  ? `Broker server is temporarily unavailable (${loginRes.status || 502}). Please retry in 10–20 seconds.`
-                  : "Broker server returned an invalid response. Please try again in a moment.",
-              };
-            }
-
-            if (!loginRes.ok && attempt < 3) {
-              await sleep(350 * attempt);
-              continue;
-            }
-
-            return lastResult;
-          } catch (err) {
-            console.error("Login request failed:", err);
-            if (attempt < 3) {
-              await sleep(350 * attempt);
-              continue;
-            }
-
-            return {
-              stat: "Not_Ok",
-              emsg: "Unable to reach broker server. Check your connection and retry.",
-            };
-          }
-        }
-
-        return lastResult;
-      };
-
-      for (const vc of vcCandidates) {
-        loginData = await attemptLogin(vc);
-
-        if (String(loginData?.stat ?? "").toUpperCase() === "OK") {
-          break;
-        }
-
-        const emsg = String(loginData?.emsg ?? "");
-        if (/temporarily unavailable|unable to reach/i.test(emsg)) {
-          break;
-        }
-      }
-
-      if (String(loginData?.stat ?? "").toUpperCase() === "OK") {
-        return new Response(JSON.stringify({
-          status: "connected",
-          session_token: loginData.susertoken,
-          username: loginData.uname,
-          actid: loginData.actid,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      return new Response(JSON.stringify({
-        error: loginData?.emsg || loginData?.error || "Login failed",
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // All other actions require session_token and uid from client
+    // All actions require session_token + uid (issued by shoonya-oauth-exchange)
     const { session_token, uid } = params;
     if (!session_token || !uid) {
-      return new Response(JSON.stringify({ error: "Not connected. Please login first." }), {
+      return new Response(JSON.stringify({ error: "Not connected. Please login with Shoonya first." }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const makeRequest = async (endpoint: string, payload: Record<string, unknown>) => {
-      const res = await fetch(`${SHOONYA_BASE}/${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "jData=" + JSON.stringify({ ...payload, uid }) + `&jKey=${session_token}`,
-      });
-      const text = await res.text();
-      try {
-        return JSON.parse(text);
-      } catch {
-        console.error(`Non-JSON response from ${endpoint}:`, text.slice(0, 300));
-        return { stat: "Not_Ok", emsg: "Broker server returned an invalid response. Please retry." };
-      }
-    };
+    const makeRequest = (endpoint: string, payload: Record<string, unknown>) =>
+      callProxy(endpoint, { ...payload, uid }, session_token);
 
     let result;
-
     switch (action) {
       case "positions":
         result = await makeRequest("PositionBook", { actid: uid });
@@ -235,7 +145,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("Shoonya API error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     }
 
     const authorize = new URL(AUTHORIZE_BASE);
-    authorize.searchParams.set("api_key", API_KEY);
+    authorize.searchParams.set("client_id", API_KEY);
     authorize.searchParams.set("redirect_uri", redirectUri);
     authorize.searchParams.set("state", state);
     authorize.searchParams.set("uid", uid);

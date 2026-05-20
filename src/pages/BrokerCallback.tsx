@@ -21,7 +21,11 @@ const BrokerCallback = () => {
     ranRef.current = true;
 
     const exchange = async () => {
-      const params = new URLSearchParams(window.location.search);
+      // Shoonya sometimes appends `?code=...` even when the whitelisted URL
+      // already has a `?` in it, producing `?client_id=FA110662?code=...`.
+      // Normalize by replacing any extra `?` after the first with `&`.
+      const rawSearch = window.location.search.replace(/\?/g, (m, i) => (i === 0 ? "?" : "&"));
+      const params = new URLSearchParams(rawSearch);
       // Shoonya may return either `code` or `request_code`
       const requestCode = params.get("code") || params.get("request_code");
       const returnedState = params.get("state");

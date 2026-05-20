@@ -21,17 +21,18 @@ async function sha256(message: string): Promise<string> {
 }
 
 async function callProxy(endpoint: string, payload: Record<string, unknown>) {
+  console.log(`[proxy ${endpoint}] payload:`, JSON.stringify(payload));
   const res = await fetch(`${PROXY_URL}/shoonya`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ endpoint, payload, jKey: null }),
   });
   const text = await res.text();
+  console.log(`[proxy ${endpoint}] status=${res.status} body=`, text.slice(0, 500));
   try {
     return JSON.parse(text);
   } catch {
-    console.error(`Non-JSON from proxy ${endpoint}:`, text.slice(0, 300));
-    return { stat: "Not_Ok", emsg: "Broker proxy returned invalid response." };
+    return { stat: "Not_Ok", emsg: `Broker proxy returned non-JSON (${res.status}): ${text.slice(0, 200)}` };
   }
 }
 

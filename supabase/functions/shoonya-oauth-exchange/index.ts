@@ -56,20 +56,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Shoonya OAuth token exchange (PRISM):
-    //   appkey  = SHA256( api_key + api_secret )
-    //   jKey    = SHA256( uid + request_code + api_secret )
-    // Endpoint: /NorenWClientTP/QuickAuth (with apkversion + source=API + appkey + jKey)
-    const appkey = await sha256(`${API_KEY}${API_SECRET}`);
-    const jKey = await sha256(`${uid}${request_code}${API_SECRET}`);
+    // Shoonya OAuth (PRISM) token exchange via QuickAuth.
+    // Per Shoonya/Flattrade docs:
+    //   appkey = SHA256( api_key + request_code + api_secret )
+    // Endpoint: /NorenWClientTP/QuickAuth
+    const appkey = await sha256(`${API_KEY}${request_code}${API_SECRET}`);
+
+    console.log(`[exchange] uid=${uid} api_key=${API_KEY} request_code=${String(request_code).slice(0, 8)}...`);
 
     const result = await callProxy("QuickAuth", {
       source: "API",
       apkversion: "1.0.0",
       uid,
+      api_key: API_KEY,
+      request_code,
       appkey,
-      jKey,
     });
+
+    console.log(`[exchange] result stat=${result?.stat} emsg=${result?.emsg ?? "(none)"}`);
 
     if (String(result?.stat ?? "").toUpperCase() === "OK") {
       return new Response(JSON.stringify({
@@ -81,7 +85,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      error: result?.emsg || "OAuth exchange failed. Please retry the login.",
+      error: result?.emsg || `OAuth exchange failed (stat=${result?.stat ?? "unknown"}).`,
     }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
     console.error("OAuth exchange error:", err);

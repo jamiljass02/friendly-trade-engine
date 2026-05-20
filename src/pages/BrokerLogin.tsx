@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { LogIn, Loader2 } from "lucide-react";
+import { Navigate } from "react-router-dom";
+import { LogIn, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,13 +10,10 @@ import { useToast } from "@/hooks/use-toast";
 import { brokerFetch } from "@/lib/broker-api";
 
 const BrokerLogin = () => {
-  const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
-  const { isLoggedIn, isLoading, saveSession } = useShoonyaSession();
+  const { isLoggedIn, isLoading } = useShoonyaSession();
   const { toast } = useToast();
   const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "");
-  const [password, setPassword] = useState("");
-  const [totp, setTotp] = useState("");
   const [loading, setLoading] = useState(false);
 
   if (authLoading || isLoading) {
@@ -37,36 +34,25 @@ const BrokerLogin = () => {
       toast({ title: "Invalid User ID", description: "e.g. FA12345", variant: "destructive" });
       return;
     }
-    if (!password || !totp) {
-      toast({ title: "Missing fields", description: "Password and TOTP are required.", variant: "destructive" });
-      return;
-    }
 
     setLoading(true);
     localStorage.setItem("shoonya_pending_uid", cleanUid);
+    const state = crypto.randomUUID();
+    sessionStorage.setItem("shoonya_oauth_state", state);
+    const redirectUri = `${window.location.origin}/broker-callback`;
 
     try {
       const { ok, data } = await brokerFetch(
-        { userid: cleanUid, password, totp: totp.trim() },
-        { functionName: "shoonya-openalgo-login" },
+        { uid: cleanUid, state, redirect_uri: redirectUri },
+        { functionName: "shoonya-oauth-url" },
       );
-      if (!ok || data.error || !data.session_token) {
-        throw new Error(data.error || "Login failed");
+      if (!ok || !data.authorize_url) {
+        throw new Error(data.error || "Could not build Shoonya login URL");
       }
-      saveSession({
-        userCode: cleanUid,
-        sessionToken: data.session_token,
-        username: data.username || cleanUid,
-        actid: data.actid || cleanUid,
-        loginTime: new Date().toISOString(),
-      });
-      localStorage.removeItem("shoonya_pending_uid");
-      toast({ title: "Connected!", description: `Logged in as ${data.username || cleanUid}` });
-      navigate("/", { replace: true });
+      window.location.href = data.authorize_url;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast({ title: "Login failed", description: msg, variant: "destructive" });
-    } finally {
       setLoading(false);
     }
   };
@@ -76,7 +62,7 @@ const BrokerLogin = () => {
       <div className="glass-card rounded-2xl p-8 w-full max-w-md">
         <h2 className="text-lg font-semibold text-foreground text-center mb-2">Connect Broker</h2>
         <p className="text-xs text-muted-foreground text-center mb-6">
-          Login via OpenAlgo bridge (static IP whitelisted)
+          SEBI-compliant login via Shoonya PRISM
         </p>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -93,37 +79,14 @@ const BrokerLogin = () => {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Password</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="bg-secondary/50 border-border/50 font-mono text-sm"
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">TOTP</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={totp}
-              onChange={(e) => setTotp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="6-digit code"
-              className="bg-secondary/50 border-border/50 font-mono text-sm tracking-widest"
-              required
-            />
-          </div>
-
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
-            {loading ? "Connecting..." : "Login"}
+            {loading ? "Redirecting..." : "Login with Shoonya"}
+            {!loading && <ExternalLink className="w-3 h-3 ml-2 opacity-60" />}
           </Button>
 
           <p className="text-[10px] text-muted-foreground text-center pt-2">
-            Credentials are sent over TLS to the backend, which calls the OpenAlgo bridge on your whitelisted IP.
+            You'll be redirected to Shoonya to enter your password and TOTP securely.
           </p>
         </form>
       </div>

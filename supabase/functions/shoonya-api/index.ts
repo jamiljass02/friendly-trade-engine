@@ -12,7 +12,7 @@ const isGatewayHtml = (text: string) =>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function callShoonya(endpoint: string, payload: Record<string, unknown>, jKey?: string) {
-  let last: any = { stat: "Not_Ok", emsg: "Proxy unreachable" };
+  let last: any = { stat: "Not_Ok", emsg: "Shoonya API unreachable" };
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {

@@ -60,10 +60,13 @@ const BrokerLogin = () => {
   return (
     <div className="min-h-screen bg-background terminal-grid flex items-center justify-center p-4">
       <div className="glass-card rounded-2xl p-8 w-full max-w-md">
-        <h2 className="text-lg font-semibold text-foreground text-center mb-2">Connect Broker</h2>
-        <p className="text-xs text-muted-foreground text-center mb-6">
-          SEBI-compliant login via Shoonya PRISM
-        </p>
+        <div className="text-center mb-6 space-y-2">
+          <p className="text-[10px] text-primary uppercase tracking-[0.35em]">TradeX Broker Login</p>
+          <h2 className="text-xl font-semibold text-foreground">Connect Shoonya</h2>
+          <p className="text-xs text-muted-foreground">
+            Authorize your broker session securely, then return to TradeX automatically.
+          </p>
+        </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
@@ -81,12 +84,12 @@ const BrokerLogin = () => {
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
-            {loading ? "Redirecting..." : "Login with Shoonya"}
+            {loading ? "Opening Shoonya..." : "Continue to Shoonya"}
             {!loading && <ExternalLink className="w-3 h-3 ml-2 opacity-60" />}
           </Button>
 
           <p className="text-[10px] text-muted-foreground text-center pt-2">
-            You'll be redirected to Shoonya to enter your password and TOTP securely.
+            No broker password is stored in TradeX.
           </p>
         </form>
       </div>

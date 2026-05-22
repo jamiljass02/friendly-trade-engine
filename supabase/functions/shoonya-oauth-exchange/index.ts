@@ -1,6 +1,5 @@
 // Exchanges Shoonya PRISM OAuth `request_code` for a session token.
-// All upstream HTTP calls go through SHOONYA_PROXY_URL so they originate
-// from the whitelisted static IP.
+// Calls Shoonya directly from Lovable Cloud, so whitelist the cloud egress IP.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,9 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const PROXY_URL = (Deno.env.get("SHOONYA_PROXY_URL") || "").replace(/\/+$/, "");
 const API_KEY = Deno.env.get("SHOONYA_OAUTH_API_KEY") || "";
 const API_SECRET = Deno.env.get("SHOONYA_OAUTH_API_SECRET") || "";
+const SHOONYA_BASE = (Deno.env.get("SHOONYA_API_BASE_URL") || "https://api.shoonya.com/NorenWClientTP")
+  .replace(/\/+$/, "");
 
 async function sha256(message: string): Promise<string> {
   const buf = new TextEncoder().encode(message);
@@ -20,38 +20,45 @@ async function sha256(message: string): Promise<string> {
     .join("");
 }
 
-async function callProxy(endpoint: string, payload: Record<string, unknown>) {
-  console.log(`[proxy ${endpoint}] payload:`, JSON.stringify(payload));
-  let res: Response;
-  try {
-    res = await fetch(`${PROXY_URL}/shoonya`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint, payload, jKey: null }),
-    });
-  } catch (err) {
-    return { stat: "Not_Ok", emsg: `Broker proxy unreachable: ${(err as Error).message}` };
-  }
-
-  const text = await res.text();
-  console.log(`[proxy ${endpoint}] status=${res.status} body=`, text.slice(0, 500));
-  const cleanText = text
+function cleanResponseText(text: string) {
+  return text
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+async function callShoonya(endpoint: string, payload: Record<string, unknown>, jKey?: string) {
+  console.log(`[shoonya ${endpoint}] payload:`, JSON.stringify(payload));
+  let res: Response;
+  try {
+    const body = new URLSearchParams({ jData: JSON.stringify(payload) });
+    if (jKey) body.set("jKey", jKey);
+
+    res = await fetch(`${SHOONYA_BASE}/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+  } catch (err) {
+    return { stat: "Not_Ok", emsg: `Shoonya API unreachable: ${(err as Error).message}` };
+  }
+
+  const text = await res.text();
+  console.log(`[shoonya ${endpoint}] status=${res.status} body=`, text.slice(0, 500));
+  const cleanText = cleanResponseText(text);
 
   try {
     const parsed = JSON.parse(text);
     if (!res.ok) {
-      const parsedText = typeof parsed === "string" ? parsed.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : JSON.stringify(parsed);
-      return { stat: "Not_Ok", emsg: `Broker proxy failed (${res.status}): ${parsedText.slice(0, 240)}` };
+      const parsedText = typeof parsed === "string" ? cleanResponseText(parsed) : JSON.stringify(parsed);
+      return { stat: "Not_Ok", emsg: `Shoonya API failed (${res.status}): ${parsedText.slice(0, 240)}` };
     }
     if (!parsed || typeof parsed !== "object") {
-      return { stat: "Not_Ok", emsg: `Broker proxy returned invalid response: ${String(parsed).slice(0, 240)}` };
+      return { stat: "Not_Ok", emsg: `Shoonya API returned invalid response: ${String(parsed).slice(0, 240)}` };
     }
     return parsed;
   } catch {
-    return { stat: "Not_Ok", emsg: `Broker proxy returned non-JSON (${res.status}): ${cleanText.slice(0, 240)}` };
+    return { stat: "Not_Ok", emsg: `Shoonya API returned non-JSON (${res.status}): ${cleanText.slice(0, 240)}` };
   }
 }
 
@@ -61,9 +68,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!PROXY_URL || !API_KEY || !API_SECRET) {
+    if (!API_KEY || !API_SECRET) {
       return new Response(JSON.stringify({
-        error: "OAuth not configured. Missing SHOONYA_PROXY_URL / SHOONYA_OAUTH_API_KEY / SHOONYA_OAUTH_API_SECRET.",
+        error: "OAuth not configured. Missing SHOONYA_OAUTH_API_KEY / SHOONYA_OAUTH_API_SECRET.",
       }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -83,7 +90,7 @@ Deno.serve(async (req) => {
 
     console.log(`[exchange] uid=${uid} api_key=${API_KEY} request_code=${String(request_code).slice(0, 8)}...`);
 
-    const result = await callProxy("QuickAuth", {
+    const result = await callShoonya("QuickAuth", {
       source: "API",
       apkversion: "1.0.0",
       uid,

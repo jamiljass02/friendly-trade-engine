@@ -1,5 +1,5 @@
 // Direct login via OpenAlgo's Shoonya endpoint.
-// POST { userid, password, totp } -> proxy /api/shoonya/login
+// POST { userid, password, totp } -> OpenAlgo /api/shoonya/login
 // Returns { session_token, username, actid }
 
 const corsHeaders = {
@@ -9,11 +9,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const RAW_PROXY = (Deno.env.get("SHOONYA_PROXY_URL") || "").replace(/\/+$/, "");
-// SHOONYA_PROXY_URL may point at :3000 (legacy passthrough). OpenAlgo runs on :5000.
-// Allow override with SHOONYA_OPENALGO_URL; otherwise swap port if needed.
-const OPENALGO_BASE = (Deno.env.get("SHOONYA_OPENALGO_URL") || RAW_PROXY.replace(/:\d+$/, ":5000"))
-  .replace(/\/+$/, "");
+const OPENALGO_BASE = (Deno.env.get("SHOONYA_OPENALGO_URL") || "").replace(/\/+$/, "");
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });

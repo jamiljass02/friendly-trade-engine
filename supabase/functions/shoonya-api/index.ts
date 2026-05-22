@@ -4,25 +4,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const PROXY_URL = (Deno.env.get("SHOONYA_PROXY_URL") || "").replace(/\/+$/, "");
+const SHOONYA_BASE = (Deno.env.get("SHOONYA_API_BASE_URL") || "https://api.shoonya.com/NorenWClientTP")
+  .replace(/\/+$/, "");
 
 const isGatewayHtml = (text: string) =>
   /502\s+Bad\s+Gateway|503\s+Service\s+Temporarily\s+Unavailable|<html/i.test(text);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function callProxy(endpoint: string, payload: Record<string, unknown>, jKey?: string) {
-  if (!PROXY_URL) {
-    return { stat: "Not_Ok", emsg: "SHOONYA_PROXY_URL is not configured." };
-  }
-
-  const body = JSON.stringify({ endpoint, payload, jKey: jKey ?? null });
+async function callShoonya(endpoint: string, payload: Record<string, unknown>, jKey?: string) {
   let last: any = { stat: "Not_Ok", emsg: "Proxy unreachable" };
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(`${PROXY_URL}/shoonya`, {
+      const body = new URLSearchParams({ jData: JSON.stringify(payload) });
+      if (jKey) body.set("jKey", jKey);
+
+      const res = await fetch(`${SHOONYA_BASE}/${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
       });
       const text = await res.text();
@@ -42,12 +41,12 @@ async function callProxy(endpoint: string, payload: Record<string, unknown>, jKe
         return last;
       }
     } catch (err) {
-      console.error(`Proxy ${endpoint} attempt ${attempt} failed:`, err);
+      console.error(`Shoonya ${endpoint} attempt ${attempt} failed:`, err);
       if (attempt < 3) {
         await sleep(350 * attempt);
         continue;
       }
-      last = { stat: "Not_Ok", emsg: "Unable to reach broker proxy. Check connection and retry." };
+      last = { stat: "Not_Ok", emsg: "Unable to reach Shoonya API. Check whitelist and retry." };
     }
   }
   return last;
@@ -71,7 +70,7 @@ Deno.serve(async (req) => {
     }
 
     const makeRequest = (endpoint: string, payload: Record<string, unknown>) =>
-      callProxy(endpoint, { ...payload, uid }, session_token);
+      callShoonya(endpoint, { ...payload, uid }, session_token);
 
     let result;
     switch (action) {

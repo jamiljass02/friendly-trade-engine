@@ -22,17 +22,36 @@ async function sha256(message: string): Promise<string> {
 
 async function callProxy(endpoint: string, payload: Record<string, unknown>) {
   console.log(`[proxy ${endpoint}] payload:`, JSON.stringify(payload));
-  const res = await fetch(`${PROXY_URL}/shoonya`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint, payload, jKey: null }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${PROXY_URL}/shoonya`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint, payload, jKey: null }),
+    });
+  } catch (err) {
+    return { stat: "Not_Ok", emsg: `Broker proxy unreachable: ${(err as Error).message}` };
+  }
+
   const text = await res.text();
   console.log(`[proxy ${endpoint}] status=${res.status} body=`, text.slice(0, 500));
+  const cleanText = text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    if (!res.ok) {
+      const parsedText = typeof parsed === "string" ? parsed.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : JSON.stringify(parsed);
+      return { stat: "Not_Ok", emsg: `Broker proxy failed (${res.status}): ${parsedText.slice(0, 240)}` };
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return { stat: "Not_Ok", emsg: `Broker proxy returned invalid response: ${String(parsed).slice(0, 240)}` };
+    }
+    return parsed;
   } catch {
-    return { stat: "Not_Ok", emsg: `Broker proxy returned non-JSON (${res.status}): ${text.slice(0, 200)}` };
+    return { stat: "Not_Ok", emsg: `Broker proxy returned non-JSON (${res.status}): ${cleanText.slice(0, 240)}` };
   }
 }
 

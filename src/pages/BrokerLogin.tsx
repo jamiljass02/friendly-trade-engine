@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
-import { LogIn, Loader2, ExternalLink } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,9 +11,11 @@ import { brokerFetch } from "@/lib/broker-api";
 
 const BrokerLogin = () => {
   const { user, isLoading: authLoading } = useAuth();
-  const { isLoggedIn, isLoading } = useShoonyaSession();
+  const { isLoggedIn, isLoading, saveSession } = useShoonyaSession();
   const { toast } = useToast();
   const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "FN171595_U");
+  const [password, setPassword] = useState("");
+  const [totp, setTotp] = useState("");
   const [loading, setLoading] = useState(false);
 
   if (authLoading || isLoading) {
@@ -34,25 +36,34 @@ const BrokerLogin = () => {
       toast({ title: "Invalid User ID", description: "e.g. FN171595_U", variant: "destructive" });
       return;
     }
+    if (!password || !/^\d{6}$/.test(totp.trim())) {
+      toast({ title: "Missing credentials", description: "Password and a 6-digit TOTP are required.", variant: "destructive" });
+      return;
+    }
 
     setLoading(true);
     localStorage.setItem("shoonya_pending_uid", cleanUid);
-    const state = crypto.randomUUID();
-    sessionStorage.setItem("shoonya_oauth_state", state);
-    const redirectUri = `${window.location.origin}/broker-callback`;
 
     try {
       const { ok, data } = await brokerFetch(
-        { uid: cleanUid, state, redirect_uri: redirectUri },
-        { functionName: "shoonya-oauth-url" },
+        { uid: cleanUid, password, totp: totp.trim() },
+        { functionName: "shoonya-direct-login" },
       );
-      if (!ok || !data.authorize_url) {
-        throw new Error(data.error || "Could not build Shoonya login URL");
+      if (!ok || !data.session_token) {
+        throw new Error(data.error || "Login failed");
       }
-      window.location.href = data.authorize_url;
+      saveSession({
+        userCode: cleanUid,
+        sessionToken: data.session_token,
+        username: data.username || cleanUid,
+        actid: data.actid || cleanUid,
+        loginTime: new Date().toISOString(),
+      });
+      toast({ title: "Connected", description: `Welcome ${data.username || cleanUid}` });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast({ title: "Login failed", description: msg, variant: "destructive" });
+    } finally {
       setLoading(false);
     }
   };
@@ -64,7 +75,7 @@ const BrokerLogin = () => {
           <p className="text-[10px] text-primary uppercase tracking-[0.35em]">TradeX Broker Login</p>
           <h2 className="text-xl font-semibold text-foreground">Connect Shoonya</h2>
           <p className="text-xs text-muted-foreground">
-            Authorize your broker session securely, then return to TradeX automatically.
+            Direct API login (UID + Password + TOTP). Traffic routes through your whitelisted gateway.
           </p>
         </div>
 
@@ -75,21 +86,46 @@ const BrokerLogin = () => {
               type="text"
               value={uid}
               onChange={(e) => setUid(e.target.value)}
-              placeholder="FA12345"
+              placeholder="FN171595_U"
               className="bg-secondary/50 border-border/50 font-mono text-sm uppercase"
               required
               autoFocus
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Password</Label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your Shoonya password"
+              className="bg-secondary/50 border-border/50 font-mono text-sm"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">TOTP (6-digit)</Label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={totp}
+              onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))}
+              placeholder="123456"
+              className="bg-secondary/50 border-border/50 font-mono text-sm tracking-[0.4em]"
+              required
+            />
+          </div>
+
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
-            {loading ? "Opening Shoonya..." : "Continue to Shoonya"}
-            {!loading && <ExternalLink className="w-3 h-3 ml-2 opacity-60" />}
+            {loading ? "Connecting..." : "Connect Shoonya"}
           </Button>
 
           <p className="text-[10px] text-muted-foreground text-center pt-2">
-            No broker password is stored in TradeX.
+            Credentials are sent only to Shoonya through your whitelisted proxy and never stored.
           </p>
         </form>
       </div>

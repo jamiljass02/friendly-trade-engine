@@ -13,7 +13,7 @@ const BrokerLogin = () => {
   const { user, isLoading: authLoading } = useAuth();
   const { isLoggedIn, isLoading } = useShoonyaSession();
   const { toast } = useToast();
-  const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "");
+  const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "FN171595_U");
   const [loading, setLoading] = useState(false);
 
   if (authLoading || isLoading) {
@@ -30,8 +30,8 @@ const BrokerLogin = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUid = uid.trim().toUpperCase();
-    if (!/^[A-Z]{1,3}\d{3,8}$/.test(cleanUid)) {
-      toast({ title: "Invalid User ID", description: "e.g. FA12345", variant: "destructive" });
+    if (!/^[A-Z]{1,4}\d{3,8}(_[A-Z0-9]{1,4})?$/.test(cleanUid)) {
+      toast({ title: "Invalid User ID", description: "e.g. FN171595_U", variant: "destructive" });
       return;
     }
 

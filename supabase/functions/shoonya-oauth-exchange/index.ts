@@ -9,7 +9,8 @@ const corsHeaders = {
 
 const API_KEY = Deno.env.get("SHOONYA_OAUTH_API_KEY") || "";
 const API_SECRET = Deno.env.get("SHOONYA_OAUTH_API_SECRET") || "";
-const SHOONYA_BASE = (Deno.env.get("SHOONYA_API_BASE_URL") || "https://api.shoonya.com/NorenWClientTP")
+// Route through whitelisted proxy gateway so Shoonya sees the user's IP.
+const SHOONYA_BASE = (Deno.env.get("SHOONYA_API_BASE_URL") || "http://92.4.65.228:3000/NorenWClientTP")
   .replace(/\/+$/, "");
 
 async function sha256(message: string): Promise<string> {

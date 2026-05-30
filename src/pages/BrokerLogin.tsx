@@ -13,7 +13,7 @@ const BrokerLogin = () => {
   const { user, isLoading: authLoading } = useAuth();
   const { isLoggedIn, isLoading } = useShoonyaSession();
   const { toast } = useToast();
-  const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "");
+  const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "FN171595_U");
   const [loading, setLoading] = useState(false);
 
   if (authLoading || isLoading) {

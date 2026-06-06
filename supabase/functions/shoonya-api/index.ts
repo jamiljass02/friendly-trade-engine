@@ -5,7 +5,7 @@ const corsHeaders = {
 };
 
 // Route through whitelisted proxy gateway so Shoonya sees the user's IP.
-const SHOONYA_BASE = (Deno.env.get("SHOONYA_API_BASE_URL") || "http://92.4.65.228:3000/NorenWClientTP")
+const SHOONYA_BASE = (Deno.env.get("SHOONYA_API_BASE_URL") || "https://api.shoonya.com/NorenWClientTP")
   .replace(/\/+$/, "");
 
 const isGatewayHtml = (text: string) =>

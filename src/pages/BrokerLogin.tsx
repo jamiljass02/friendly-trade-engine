@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
-import { LogIn, Loader2 } from "lucide-react";
+import { LogIn, Loader2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,11 +11,11 @@ import { brokerFetch } from "@/lib/broker-api";
 
 const BrokerLogin = () => {
   const { user, isLoading: authLoading } = useAuth();
-  const { isLoggedIn, isLoading, saveSession } = useShoonyaSession();
+  const { isLoggedIn, isLoading } = useShoonyaSession();
   const { toast } = useToast();
-  const [uid, setUid] = useState(() => localStorage.getItem("shoonya_pending_uid") || "FN171595_U");
-  const [password, setPassword] = useState("");
-  const [totp, setTotp] = useState("");
+  const [clientId, setClientId] = useState(
+    () => localStorage.getItem("shoonya_pending_uid")?.replace(/_U$/, "") || "",
+  );
   const [loading, setLoading] = useState(false);
 
   if (authLoading || isLoading) {
@@ -29,41 +29,44 @@ const BrokerLogin = () => {
   if (!user) return <Navigate to="/auth" replace />;
   if (isLoggedIn) return <Navigate to="/" replace />;
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleValidate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanUid = uid.trim().toUpperCase();
-    if (!/^[A-Z]{1,4}\d{3,8}(_[A-Z0-9]{1,4})?$/.test(cleanUid)) {
-      toast({ title: "Invalid User ID", description: "e.g. FN171595_U", variant: "destructive" });
-      return;
-    }
-    if (!password || !/^\d{6}$/.test(totp.trim())) {
-      toast({ title: "Missing credentials", description: "Password and a 6-digit TOTP are required.", variant: "destructive" });
+    const cleanId = clientId.trim().toUpperCase();
+    if (!/^[A-Z]{1,4}\d{3,8}$/.test(cleanId)) {
+      toast({
+        title: "Invalid Client ID",
+        description: "Enter your Shoonya Client ID (e.g. FA110662)",
+        variant: "destructive",
+      });
       return;
     }
 
+    // Shoonya API user id is the client id with `_U` suffix
+    const uid = `${cleanId}_U`;
     setLoading(true);
-    localStorage.setItem("shoonya_pending_uid", cleanUid);
+    localStorage.setItem("shoonya_pending_uid", uid);
 
     try {
+      const state = crypto.randomUUID();
+      sessionStorage.setItem("shoonya_oauth_state", state);
+
       const { ok, data } = await brokerFetch(
-        { uid: cleanUid, password, totp: totp.trim() },
-        { functionName: "shoonya-direct-login" },
+        {
+          uid,
+          state,
+          redirect_uri: `${window.location.origin}/broker-callback`,
+        },
+        { functionName: "shoonya-oauth-url" },
       );
-      if (!ok || !data.session_token) {
-        throw new Error(data.error || "Login failed");
+
+      if (!ok || !data.authorize_url) {
+        throw new Error(data.error || "Could not start Shoonya login");
       }
-      saveSession({
-        userCode: cleanUid,
-        sessionToken: data.session_token,
-        username: data.username || cleanUid,
-        actid: data.actid || cleanUid,
-        loginTime: new Date().toISOString(),
-      });
-      toast({ title: "Connected", description: `Welcome ${data.username || cleanUid}` });
+
+      window.location.href = data.authorize_url;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast({ title: "Login failed", description: msg, variant: "destructive" });
-    } finally {
       setLoading(false);
     }
   };
@@ -71,61 +74,52 @@ const BrokerLogin = () => {
   return (
     <div className="min-h-screen bg-background terminal-grid flex items-center justify-center p-4">
       <div className="glass-card rounded-2xl p-8 w-full max-w-md">
-        <div className="text-center mb-6 space-y-2">
-          <p className="text-[10px] text-primary uppercase tracking-[0.35em]">TradeX Broker Login</p>
-          <h2 className="text-xl font-semibold text-foreground">Connect Shoonya</h2>
-          <p className="text-xs text-muted-foreground">
-            Direct API login (UID + Password + TOTP) to Shoonya.
-          </p>
+        <div className="text-center mb-8 space-y-3">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary/10">
+            <LogIn className="w-6 h-6 text-primary" />
+          </div>
+          <p className="text-[10px] text-primary uppercase tracking-[0.35em]">Connect Broker</p>
+          <h2 className="text-xl font-semibold text-foreground">Shoonya by Finvasia</h2>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Shoonya User ID</Label>
+        <form onSubmit={handleValidate} className="space-y-5">
+          <div className="space-y-2">
+            <Label className="text-xs text-foreground font-medium">Client Id</Label>
             <Input
               type="text"
-              value={uid}
-              onChange={(e) => setUid(e.target.value)}
-              placeholder="FN171595_U"
-              className="bg-secondary/50 border-border/50 font-mono text-sm uppercase"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value.toUpperCase())}
+              placeholder="FA110662"
+              className="bg-secondary/50 border-border/50 font-mono text-sm uppercase h-11"
               required
               autoFocus
+              disabled={loading}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Password</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your Shoonya password"
-              className="bg-secondary/50 border-border/50 font-mono text-sm"
-              required
-            />
-          </div>
+          <a
+            href="https://prism.shoonya.com/api"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 text-xs text-primary hover:underline"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            Steps to get API key and Secret key details?
+          </a>
 
-          <div className="space-y-1.5">
-            <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">TOTP (6-digit)</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              value={totp}
-              onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))}
-              placeholder="123456"
-              className="bg-secondary/50 border-border/50 font-mono text-sm tracking-[0.4em]"
-              required
-            />
-          </div>
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
-            {loading ? "Connecting..." : "Connect Shoonya"}
+          <Button type="submit" className="w-full h-11" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Redirecting to Shoonya...
+              </>
+            ) : (
+              "Validate"
+            )}
           </Button>
 
-          <p className="text-[10px] text-muted-foreground text-center pt-2">
-            Credentials are sent only to Shoonya through your whitelisted proxy and never stored.
+          <p className="text-[10px] text-muted-foreground text-center pt-1">
+            You'll be redirected to Shoonya to authorize TradeX. No password is entered here.
           </p>
         </form>
       </div>

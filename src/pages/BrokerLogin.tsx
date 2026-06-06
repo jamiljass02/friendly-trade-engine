@@ -75,7 +75,7 @@ const BrokerLogin = () => {
           <p className="text-[10px] text-primary uppercase tracking-[0.35em]">TradeX Broker Login</p>
           <h2 className="text-xl font-semibold text-foreground">Connect Shoonya</h2>
           <p className="text-xs text-muted-foreground">
-            Direct API login (UID + Password + TOTP). Traffic routes through your whitelisted gateway.
+            Direct API login (UID + Password + TOTP) to Shoonya.
           </p>
         </div>
 

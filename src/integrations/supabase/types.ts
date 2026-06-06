@@ -68,57 +68,6 @@ export type Database = {
         }
         Relationships: []
       }
-      broker_credentials: {
-        Row: {
-          api_key: string
-          broker: string
-          created_at: string
-          id: string
-          imei: string
-          is_connected: boolean
-          last_connected_at: string | null
-          password: string
-          session_token: string | null
-          totp_key: string
-          updated_at: string
-          user_code: string
-          user_id: string
-          vendor_code: string
-        }
-        Insert: {
-          api_key: string
-          broker?: string
-          created_at?: string
-          id?: string
-          imei?: string
-          is_connected?: boolean
-          last_connected_at?: string | null
-          password: string
-          session_token?: string | null
-          totp_key: string
-          updated_at?: string
-          user_code: string
-          user_id: string
-          vendor_code?: string
-        }
-        Update: {
-          api_key?: string
-          broker?: string
-          created_at?: string
-          id?: string
-          imei?: string
-          is_connected?: boolean
-          last_connected_at?: string | null
-          password?: string
-          session_token?: string | null
-          totp_key?: string
-          updated_at?: string
-          user_code?: string
-          user_id?: string
-          vendor_code?: string
-        }
-        Relationships: []
-      }
       profiles: {
         Row: {
           created_at: string

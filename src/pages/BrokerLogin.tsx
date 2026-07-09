@@ -8,6 +8,7 @@ import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { brokerFetch } from "@/lib/broker-api";
+import { safeRandomUUID } from "@/lib/utils";
 
 const BrokerLogin = () => {
   const { user, isLoading: authLoading } = useAuth();

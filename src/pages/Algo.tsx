@@ -43,7 +43,7 @@ import {
   BookOpen,
   X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, safeRandomUUID } from "@/lib/utils";
 import { useScheduledTrades } from "@/hooks/useScheduledTrades";
 import { useBroker } from "@/hooks/useBroker";
 import { supabase } from "@/integrations/supabase/client";
@@ -342,7 +342,7 @@ const presetStrategies: Omit<AlgoStrategy, "id" | "createdAt" | "status" | "back
 ];
 
 function generateId() {
-  return crypto.randomUUID();
+  return safeRandomUUID();
 }
 
 const Algo = () => {

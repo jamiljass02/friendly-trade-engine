@@ -15,7 +15,7 @@ import {
   Target,
   Zap,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, safeRandomUUID } from "@/lib/utils";
 import { getBrokerOrderId, getOrderFillPrice, roundToTick, waitForOrderFill } from "@/lib/broker-order-utils";
 import { monitorMoveToCost, type StopOrderWatch } from "@/lib/broker-stop-loss";
 import {
@@ -377,7 +377,7 @@ const EnhancedStrategyBuilder = () => {
     }
 
     const payload: SavedStrategy = {
-      id: crypto.randomUUID(),
+      id: safeRandomUUID(),
       name: strategyName.trim() || "Custom Strategy",
       legs,
       savedAt: new Date().toISOString(),
@@ -672,7 +672,7 @@ const EnhancedStrategyBuilder = () => {
       }
 
       upsertRunningStrategy({
-        id: `builder-${crypto.randomUUID()}`,
+        id: `builder-${safeRandomUUID()}`,
         name: strategyName.trim() || detectedStrategy,
         instrument: primaryInstrument,
         source: "builder",

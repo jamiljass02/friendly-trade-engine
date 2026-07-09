@@ -8,6 +8,7 @@ import { useShoonyaSession } from "@/hooks/useShoonyaSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { brokerFetch } from "@/lib/broker-api";
+import { safeRandomUUID } from "@/lib/utils";
 
 const BrokerLogin = () => {
   const { user, isLoading: authLoading } = useAuth();
@@ -47,7 +48,7 @@ const BrokerLogin = () => {
     localStorage.setItem("shoonya_pending_uid", uid);
 
     try {
-      const state = crypto.randomUUID();
+      const state = safeRandomUUID();
       sessionStorage.setItem("shoonya_oauth_state", state);
 
       const { ok, data } = await brokerFetch(

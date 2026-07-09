@@ -11,6 +11,17 @@ const API_KEY = Deno.env.get("SHOONYA_OAUTH_API_KEY") || "";
 const REDIRECT_URL_DEFAULT = Deno.env.get("SHOONYA_OAUTH_REDIRECT_URL") || "";
 const AUTHORIZE_BASE = "https://trade.shoonya.com/OAuthlogin/authorize/oauth";
 
+function safeRandomUUID() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });

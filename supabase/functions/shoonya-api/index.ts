@@ -4,9 +4,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Route through whitelisted proxy gateway so Shoonya sees the user's IP.
-const SHOONYA_BASE = (Deno.env.get("SHOONYA_API_BASE_URL") || "https://api.shoonya.com/NorenWClientTP")
-  .replace(/\/+$/, "");
+// Call Shoonya API directly (no proxy).
+const SHOONYA_BASE = "https://api.shoonya.com/NorenWClientTP";
 
 const isGatewayHtml = (text: string) =>
   /502\s+Bad\s+Gateway|503\s+Service\s+Temporarily\s+Unavailable|<html/i.test(text);

@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const url = new URL(req.url);
     const uid = (body.uid || url.searchParams.get("uid") || "").toString().trim().toUpperCase();
-    const state = (body.state || url.searchParams.get("state") || crypto.randomUUID()).toString();
+    const state = (body.state || url.searchParams.get("state") || safeRandomUUID()).toString();
     const redirectUri = (body.redirect_uri || url.searchParams.get("redirect_uri") || REDIRECT_URL_DEFAULT).toString();
 
     if (!uid) {

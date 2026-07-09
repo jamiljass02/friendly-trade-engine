@@ -48,7 +48,7 @@ const BrokerLogin = () => {
     localStorage.setItem("shoonya_pending_uid", uid);
 
     try {
-      const state = crypto.randomUUID();
+      const state = safeRandomUUID();
       sessionStorage.setItem("shoonya_oauth_state", state);
 
       const { ok, data } = await brokerFetch(

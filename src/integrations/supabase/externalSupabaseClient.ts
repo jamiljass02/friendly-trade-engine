@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 export const EXTERNAL_SUPABASE_URL = "https://kffecluugjrksrxqzx.supabase.co";
 export const EXTERNAL_SUPABASE_PROJECT_ID = "kffecluugjrksrxqzx";
 export const EXTERNAL_SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_spvOqOBhq-0EhjAiQu3KeQ_vFqkYqxT";
+  "sb_publishable_spv0q0Bfq-0EhjAiQu3KeQ_vFqkYqxT";
 
 // Separate storage key so this client's session never collides with the
 // primary Lovable Cloud auth session in localStorage.
